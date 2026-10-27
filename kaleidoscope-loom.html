@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0B0812">
+<title>Kaleidoscope Loom</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0812;--accent:#e8873a;--text:#f0e7ef;--muted:#a99caf;font-family:'Space Mono',ui-monospace,SFMono-Regular,Consolas,monospace}*{box-sizing:border-box}body{margin:0;overflow:hidden;background:var(--bg);color:var(--text)}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}header{position:fixed;top:28px;left:30px;pointer-events:none;text-shadow:0 2px 15px var(--bg)}h1{margin:0 0 8px;font-size:13px;letter-spacing:.18em;font-weight:500;text-transform:uppercase}header p{margin:0;font-size:9px;letter-spacing:.12em;color:var(--muted)}.mark{position:fixed;right:30px;top:30px;font-size:10px;color:var(--muted);pointer-events:none}.bar{position:fixed;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:22px;width:max-content;max-width:calc(100% - 28px);padding:14px 18px;background:#181120db;border:1px solid #ffffff1c;border-radius:14px;backdrop-filter:blur(20px);box-shadow:0 16px 56px #0005}.field{display:grid;gap:9px;min-width:110px}.label{display:flex;justify-content:space-between;gap:12px;font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}output{color:var(--accent);font-variant-numeric:tabular-nums}input[type=range]{width:120px;margin:0;accent-color:var(--accent);cursor:pointer;height:17px}select,button{font:inherit;font-size:11px;min-height:36px;border:1px solid #ffffff20;border-radius:7px;background:#ffffff05;color:var(--text);padding:0 12px;cursor:pointer}select{color:var(--accent);max-width:155px}button:hover,select:hover{border-color:#e8873a90;background:#e8873a12}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:4px}button:disabled{opacity:.4;cursor:default}#spin{color:var(--accent);border-color:#e8873a55;background:#e8873a10}.actions{display:flex;gap:7px}.divider{width:1px;height:34px;background:#ffffff18}.status{font-size:9px;line-height:1.9;color:var(--muted);min-width:110px}.status strong{font-weight:400;color:var(--text)}.dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:7px}@media(max-width:760px){.bar{gap:14px;flex-wrap:wrap;justify-content:center;width:max-content}.status{display:none}.divider{display:none}header{left:20px;top:22px}.mark{right:20px;top:24px}}@media(max-width:480px){.bar{width:calc(100% - 24px);gap:14px 18px;padding:14px}.field{flex:1}.field input{width:100%}.palette{flex-basis:calc(50% - 18px)}select{width:100%;max-width:none}.actions{align-self:end;flex:1}.actions button{flex:1}h1{font-size:11px}.mark{display:none}header p{font-size:8px}}
+</style>
+</head>
+<body>
+<canvas id="loom" role="img" aria-label="A kaleidoscope of coloured ASCII characters folded into mirrored, evolving patterns"></canvas>
+<header><h1>Kaleidoscope Loom</h1><p>A LITTLE NOISE. INFINITE SYMMETRY.</p></header><div class="mark">GENERATIVE STUDY / 002</div>
+<div class="bar" role="region" aria-label="Kaleidoscope controls">
+<label class="field"><span class="label">Segments <output id="segmentsValue" for="segments">8</output></span><input id="segments" type="range" min="4" max="16" step="1" value="8"></label>
+<label class="field"><span class="label">Speed <output id="speedValue" for="speed">1.0×</output></span><input id="speed" type="range" min="0" max="3" step="0.1" value="1"></label>
+<label class="field palette"><span class="label">Palette</span><select id="palette"><option>Violet Loom</option><option>Pond</option><option>Ember</option></select></label>
+<span class="divider" aria-hidden="true"></span><div class="actions"><button id="spin" title="A 1.5-second burst of rotation">↗ Spin</button><button id="pause" aria-pressed="false" aria-keyshortcuts="Space">Pause</button></div>
+<div class="status"><strong><span class="dot"></span><span id="state">Weaving</span></strong><br><span id="hint">Move to find a centre</span></div>
+</div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),canvas=$('loom'),ctx=canvas.getContext('2d',{alpha:false});
+const TAU=Math.PI*2,CHARS=' .:-=+*#%@',CELL_W=10,CELL_H=15;
+const palettes={'Violet Loom':['#1E1033','#7B4B94','#E85C8A','#F2C94C','#F7EAD9'],Pond:['#062A2E','#1F8A8C','#72EFDD','#D8FFF4','#FFFFFF'],Ember:['#2A0E14','#B33A2B','#E8873A','#F2C94C','#F7EAD9']};
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+let width=0,height=0,cols=0,rows=0,centerX=0,centerY=0,targetX=0,targetY=0;
+let segments=8,speed=1,time=0,rotation=0,spinAge=1.5,paused=false,raf=0,lastTime=null,colors=[];
+// Integer hashing keeps the source deterministic, including at negative coordinates.
+function hash(ix,iy){let h=Math.imul(ix,374761393)^Math.imul(iy,668265263)^0x3c6ef372;h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295;}
+const mix=(a,b,t)=>a+(b-a)*t;
+function noise(x,y){const ix=Math.floor(x),iy=Math.floor(y);let u=x-ix,v=y-iy;u=u*u*(3-2*u);v=v*v*(3-2*v);return mix(mix(hash(ix,iy),hash(ix+1,iy),u),mix(hash(ix,iy+1),hash(ix+1,iy+1),u),v);}
+function fbm(x,y){return (noise(x,y)+.5*noise(x*2,y*2)+.25*noise(x*4,y*4))/1.75;}
+function fold(theta,wedge){let a=((theta%wedge)+wedge)%wedge;if(a>wedge/2)a=wedge-a;return a;}
+function sample(dx,dy,t,angle,n){const radius=Math.hypot(dx,dy),a=fold(Math.atan2(dy,dx)+angle,TAU/n),zoom=.014*(1+.25*Math.sin(t*.11)),drift=t*.05;return Math.pow(fbm(Math.cos(a)*radius*zoom+drift,Math.sin(a)*radius*zoom-drift*.7),1.3);}
+function buildColors(){const stops=palettes[$('palette').value].map(h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)));colors=Array.from({length:256},(_,i)=>{const p=i/255*4,j=Math.min(3,Math.floor(p)),f=p-j;return 'rgb('+stops[j].map((v,k)=>Math.round(mix(v,stops[j+1][k],f))).join(',')+')';});}
+function draw(){ctx.fillStyle='#0B0812';ctx.fillRect(0,0,width,height);ctx.font='bold 14px "Space Mono", ui-monospace, monospace';ctx.textAlign='center';ctx.textBaseline='middle';// Centre the grid; scalar samples share the exact mirrored fold at every location.
+const ox=(width-cols*CELL_W)/2,oy=(height-rows*CELL_H)/2;
+for(let row=0;row<rows;row++){const py=oy+(row+.5)*CELL_H;for(let col=0;col<cols;col++){const px=ox+(col+.5)*CELL_W,b=sample(px-centerX,py-centerY,time,rotation,segments),char=CHARS[Math.min(9,Math.floor(b*9))];if(char===' ')continue;ctx.fillStyle=colors[Math.min(255,Math.floor(b*255))];ctx.fillText(char,px,py);}}}
+function running(){return !paused&&!reduced.matches&&!document.hidden;}
+function schedule(){if(running()&&!raf)raf=requestAnimationFrame(frame);}
+function frame(now){raf=0;if(!running()){lastTime=null;return;}const dt=lastTime===null?0:Math.min((now-lastTime)/1000,.05);lastTime=now;time+=dt*speed;const boost=spinAge<1.5?1+5*Math.pow(1-spinAge/1.5,2):1;rotation=(rotation+dt*.09*speed*boost)%TAU;spinAge=Math.min(1.5,spinAge+dt);const ease=1-Math.pow(.95,dt*60);centerX=mix(centerX,targetX,ease);centerY=mix(centerY,targetY,ease);draw();schedule();}
+function updateStatus(){$('pause').textContent=paused?'Resume':'Pause';$('pause').setAttribute('aria-pressed',String(paused));$('pause').disabled=reduced.matches;$('spin').disabled=reduced.matches||paused||speed===0;$('state').textContent=reduced.matches?'Still weave':paused?'Paused':document.hidden?'Tab hidden':speed===0?'Time held':'Weaving';$('hint').textContent=reduced.matches?'Reduced motion enabled':paused?'Space to resume':'Move to find a centre';}
+function sync(){cancelAnimationFrame(raf);raf=0;lastTime=null;updateStatus();schedule();}
+function resize(){const oldW=width,oldH=height;width=innerWidth;height=innerHeight;cols=Math.ceil(width/CELL_W);rows=Math.ceil(height/CELL_H);if(oldW&&oldH){centerX*=width/oldW;targetX*=width/oldW;centerY*=height/oldH;targetY*=height/oldH;}else{centerX=targetX=width/2;centerY=targetY=height/2;}const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);draw();}
+function togglePause(){if(reduced.matches)return;paused=!paused;sync();}
+canvas.addEventListener('pointermove',e=>{if(reduced.matches||paused)return;targetX=e.clientX;targetY=e.clientY;});
+canvas.addEventListener('pointerdown',e=>{if(reduced.matches||paused)return;targetX=e.clientX;targetY=e.clientY;});
+$('segments').addEventListener('input',e=>{segments=Number(e.target.value);$('segmentsValue').textContent=segments;draw();});
+$('speed').addEventListener('input',e=>{speed=Number(e.target.value);$('speedValue').textContent=speed.toFixed(1)+'×';updateStatus();});
+$('palette').addEventListener('change',()=>{buildColors();draw();});
+$('spin').addEventListener('click',()=>{if(running()&&speed>0)spinAge=0;});$('pause').addEventListener('click',togglePause);
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(e.target.tagName)){e.preventDefault();togglePause();}});
+document.addEventListener('visibilitychange',sync);window.addEventListener('resize',resize);
+reduced.addEventListener('change',()=>{spinAge=1.5;sync();draw();});
+buildColors();resize();sync();
+</script>
+</body>
+</html>
