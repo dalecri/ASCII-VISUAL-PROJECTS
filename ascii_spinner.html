@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Spinner</title>
+  <style>
+    :root {
+      --bg-page: #1E1826;
+      --bg-panel: #2A2233;
+      --bg-input: #17121E;
+      --border-color: #3D324A;
+      --border-hover: #574869;
+      --text-main: #EDE7F2;
+      --text-muted: #9B8FA8;
+      --accent: #E8873A;
+      --accent-hover: #F29A52;
+      --accent-dim: rgba(232, 135, 58, 0.16);
+      --radius: 14px;
+      --radius-sm: 8px;
+      --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.4;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Main Single-Screen Shell */
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+      padding: 14px;
+      gap: 14px;
+    }
+
+    /* Top Brand & Status Bar */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 10px 18px;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background-color: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      font-size: 14px;
+      user-select: none;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .top-info {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    /* Workspace: Sidebar + Output Stage */
+    .workspace {
+      display: flex;
+      flex: 1;
+      gap: 14px;
+      min-height: 0;
+    }
+
+    /* Controls Sidebar */
+    .sidebar {
+      width: 290px;
+      flex-shrink: 0;
+      background-color: var(--bg-panel);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .control-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .control-value {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--bg-input);
+      border-radius: 999px;
+      outline: none;
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg-page);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg-page);
+      cursor: pointer;
+    }
+
+    /* Segmented Option Buttons */
+    .option-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .option-btn {
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 4px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .option-btn:hover {
+      border-color: var(--border-hover);
+    }
+
+    .option-btn.active {
+      background-color: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--text-main);
+      font-weight: 700;
+    }
+
+    /* Action Buttons Pair */
+    .action-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .btn {
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: #1E1826;
+      border-color: var(--accent);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+      border-color: var(--accent-hover);
+      color: #1E1826;
+    }
+
+    /* Output Stage Panel */
+    .stage {
+      flex: 1;
+      background-color: var(--bg-panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--border-color);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 16px;
+      min-width: 0;
+      cursor: grab;
+    }
+
+    .stage:active {
+      cursor: grabbing;
+    }
+
+    #asciiPre {
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.05;
+      letter-spacing: 0.05em;
+      user-select: none;
+      -webkit-user-select: none;
+      background: transparent;
+      white-space: pre;
+    }
+
+    /* Interactive hint overlay */
+    .stage-hint {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(23, 18, 30, 0.75);
+      border: 1px solid var(--border-color);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--text-muted);
+      pointer-events: none;
+      letter-spacing: 0.02em;
+    }
+
+    /* Responsive */
+    @media (max-width: 800px) {
+      html, body {
+        overflow: auto;
+      }
+      .app-shell {
+        height: auto;
+        min-height: 100vh;
+      }
+      .workspace {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+      }
+      .stage {
+        min-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="brand">
+        <div class="brand-icon">3D</div>
+        <div>
+          <div class="brand-title">ASCII Spinner</div>
+          <div class="brand-subtitle">Real-Time 3D Engine &bull; Donut.c Style</div>
+        </div>
+      </div>
+      <div class="top-info">
+        Drag or swipe to spin &bull; Spacebar to pause
+      </div>
+    </header>
+
+    <!-- Workspace -->
+    <div class="workspace">
+      <!-- Sidebar Controls -->
+      <aside class="sidebar" aria-label="Controls">
+        <!-- Object Picker -->
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Object Shape</span>
+          </div>
+          <div class="option-row" role="radiogroup" aria-label="Object Shape">
+            <button type="button" class="option-btn active" data-object="torus">Torus</button>
+            <button type="button" class="option-btn" data-object="cube">Cube</button>
+            <button type="button" class="option-btn" data-object="sphere">Sphere</button>
+          </div>
+        </div>
+
+        <!-- Colour Mode Picker -->
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Colour Mode</span>
+          </div>
+          <div class="option-row" role="radiogroup" aria-label="Colour Mode">
+            <button type="button" class="option-btn active" data-color="palette">Palette</button>
+            <button type="button" class="option-btn" data-color="mono">Mono</button>
+          </div>
+        </div>
+
+        <!-- Detail Slider -->
+        <div class="control-group">
+          <div class="control-header">
+            <label class="control-label" for="detailSlider">Detail (Width)</label>
+            <span class="control-value" id="detailValue">140 cols</span>
+          </div>
+          <input type="range" id="detailSlider" min="80" max="200" step="10" value="140">
+        </div>
+
+        <!-- Speed Slider -->
+        <div class="control-group">
+          <div class="control-header">
+            <label class="control-label" for="speedSlider">Rotation Speed</label>
+            <span class="control-value" id="speedValue">1.0x</span>
+          </div>
+          <input type="range" id="speedSlider" min="0" max="3" step="0.1" value="1.0">
+        </div>
+
+        <!-- Actions -->
+        <div class="action-row">
+          <button type="button" class="btn btn-primary" id="pauseBtn">Pause</button>
+          <button type="button" class="btn" id="resetBtn">Reset Spin</button>
+        </div>
+      </aside>
+
+      <!-- ASCII Rendering Output Stage -->
+      <main class="stage" id="stageContainer" aria-label="Interactive 3D ASCII Canvas">
+        <pre id="asciiPre"></pre>
+        <div class="stage-hint">Click &amp; drag to throw &bull; Space to pause</div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // --- Constants & Configuration ---
+      const LUMINANCE_RAMP = ".,-~:;=!*#$@";
+      const RAMP_MAX = LUMINANCE_RAMP.length - 1;
+
+      // Palette gradients mapped to luminance rank (0 to 11)
+      // Deep purple -> lavender -> pink -> amber -> cream
+      const PALETTE_COLORS = [
+        "#3D324A", // 0: dimmest
+        "#4B3D59",
+        "#67527A",
+        "#84689A",
+        "#9B8FA8", // 4
+        "#B87A98",
+        "#D46587",
+        "#E85C8A", // 7
+        "#E8784E",
+        "#E8873A", // 9 (Amber accent)
+        "#F2A952",
+        "#EDE7F2"  // 11: brightest cream
+      ];
+
+      const MONO_COLOR = "#EDE7F2";
+
+      // --- App State ---
+      const state = {
+        objectType: "torus", // torus | cube | sphere
+        colorMode: "palette", // palette | mono
+        cols: 140,
+        speed: 1.0,
+        isPaused: false,
+        // Rotation angles
+        A: 0.0,
+        B: 0.0,
+        // Inertial drag momentum
+        velA: 0.012,
+        velB: 0.009,
+        isDragging: false,
+        lastMouseX: 0,
+        lastMouseY: 0
+      };
+
+      // Reduced motion preference
+      const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      let prefersReducedMotion = reducedMotionQuery.matches;
+
+      // --- DOM Elements ---
+      const asciiPre = document.getElementById("asciiPre");
+      const stageContainer = document.getElementById("stageContainer");
+      const detailSlider = document.getElementById("detailSlider");
+      const detailValue = document.getElementById("detailValue");
+      const speedSlider = document.getElementById("speedSlider");
+      const speedValue = document.getElementById("speedValue");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const resetBtn = document.getElementById("resetBtn");
+
+      // --- Pre-calculated 3D Surface Point Generators ---
+      // Each generator returns an array of surface points: { x, y, z, nx, ny, nz }
+      function generateTorusPoints() {
+        const points = [];
+        const R1 = 1.0; // tube radius
+        const R2 = 2.0; // distance from center to tube center
+        const thetaSpacing = 0.07;
+        const phiSpacing = 0.035;
+
+        for (let theta = 0; theta < Math.PI * 2; theta += thetaSpacing) {
+          const ct = Math.cos(theta);
+          const st = Math.sin(theta);
+          for (let phi = 0; phi < Math.PI * 2; phi += phiSpacing) {
+            const cp = Math.cos(phi);
+            const sp = Math.sin(phi);
+
+            // Surface coordinates
+            const ox = (R2 + R1 * ct) * cp;
+            const oy = R1 * st;
+            const oz = (R2 + R1 * ct) * sp;
+
+            // Surface normal
+            const nx = ct * cp;
+            const ny = st;
+            const nz = ct * sp;
+
+            points.push({ x: ox, y: oy, z: oz, nx: nx, ny: ny, nz: nz });
+          }
+        }
+        return points;
+      }
+
+      function generateCubePoints() {
+        const points = [];
+        const size = 1.6;
+        const step = 0.08;
+
+        // Helper to add a face
+        function addFace(fx, fy, fz, uAxis, vAxis, normal) {
+          for (let u = -size; u <= size; u += step) {
+            for (let v = -size; v <= size; v += step) {
+              const pt = { x: 0, y: 0, z: 0, nx: normal.x, ny: normal.y, nz: normal.z };
+              pt[uAxis] = u;
+              pt[vAxis] = v;
+              pt[['x', 'y', 'z'].find(k => k !== uAxis && k !== vAxis)] = fz;
+              points.push(pt);
+            }
+          }
+        }
+
+        // 6 faces
+        addFace('x', 'y', size, 'x', 'y', { x: 0, y: 0, z: 1 });  // Front
+        addFace('x', 'y', -size, 'x', 'y', { x: 0, y: 0, z: -1 }); // Back
+        addFace('x', 'z', size, 'x', 'z', { x: 0, y: 1, z: 0 });  // Top
+        addFace('x', 'z', -size, 'x', 'z', { x: 0, y: -1, z: 0 }); // Bottom
+        addFace('y', 'z', size, 'y', 'z', { x: 1, y: 0, z: 0 });  // Right
+        addFace('y', 'z', -size, 'y', 'z', { x: -1, y: 0, z: 0 }); // Left
+
+        return points;
+      }
+
+      function generateSpherePoints() {
+        const points = [];
+        const radius = 1.9;
+        const step = 0.09;
+
+        for (let phi = -Math.PI / 2; phi <= Math.PI / 2; phi += step) {
+          const cp = Math.cos(phi);
+          const sp = Math.sin(phi);
+          const ringRadius = radius * cp;
+          const circ = Math.PI * 2 * Math.abs(cp);
+          const thetaStep = Math.max(step, circ / Math.round(circ / step));
+
+          for (let theta = 0; theta < Math.PI * 2; theta += thetaStep) {
+            const ct = Math.cos(theta);
+            const st = Math.sin(theta);
+
+            const ox = ringRadius * ct;
+            const oy = radius * sp;
+            const oz = ringRadius * st;
+
+            const length = Math.hypot(ox, oy, oz) || 1;
+            points.push({
+              x: ox, y: oy, z: oz,
+              nx: ox / length, ny: oy / length, nz: oz / length
+            });
+          }
+        }
+        return points;
+      }
+
+      // Cache current object geometry
+      let cachedPoints = generateTorusPoints();
+
+      function switchObject(type) {
+        state.objectType = type;
+        if (type === "torus") cachedPoints = generateTorusPoints();
+        else if (type === "cube") cachedPoints = generateCubePoints();
+        else if (type === "sphere") cachedPoints = generateSpherePoints();
+      }
+
+      // --- Main Render Loop (Donut.c 3D Projection Algorithm) ---
+      function renderFrame() {
+        const cols = state.cols;
+        // Characters are roughly 2x taller than wide; height is calculated to preserve square proportions
+        const rows = Math.max(25, Math.round(cols * 0.44));
+
+        const buffer = new Array(cols * rows).fill(" ");
+        const zbuffer = new Float32Array(cols * rows).fill(0);
+
+        // Lighting direction vector (normalized towards top-right-front)
+        const lightX = 0, lightY = 0.707, lightZ = -0.707;
+        const lLen = Math.hypot(lightX, lightY, lightZ);
+        const lx = lightX / lLen, ly = lightY / lLen, lz = lightZ / lLen;
+
+        const sinA = Math.sin(state.A), cosA = Math.cos(state.A);
+        const sinB = Math.sin(state.B), cosB = Math.cos(state.B);
+
+        // Camera distance (K2) and projection scale (K1)
+        const K2 = 5.5;
+        const K1 = cols * 1.6; // Scale factor based on column width
+
+        const points = cachedPoints;
+        const numPoints = points.length;
+
+        for (let i = 0; i < numPoints; i++) {
+          const p = points[i];
+          const x = p.x, y = p.y, z = p.z;
+          const nx = p.nx, ny = p.ny, nz = p.nz;
+
+          // 3D Rotation around X and Z axes
+          // Rotation around X (angle A)
+          const y1 = y * cosA - z * sinA;
+          const z1 = y * sinA + z * cosA;
+          const x1 = x;
+
+          // Rotation around Z (angle B)
+          const x2 = x1 * cosB - y1 * sinB;
+          const y2 = x1 * sinB + y1 * cosB;
+          const z2 = z1;
+
+          // Translate away from camera
+          const ooz = 1.0 / (z2 + K2); // One over z (depth)
+
+          // Project to 2D screen coordinates (centered)
+          const xp = Math.round(cols / 2 + K1 * ooz * x2 * 0.45);
+          const yp = Math.round(rows / 2 - K1 * ooz * y2 * 0.22);
+
+          const idx = yp * cols + xp;
+
+          if (xp >= 0 && xp < cols && yp >= 0 && yp < rows) {
+            if (ooz > zbuffer[idx]) {
+              zbuffer[idx] = ooz;
+
+              // Rotate normals for lighting calculation
+              const ny1 = ny * cosA - nz * sinA;
+              const nz1 = ny * sinA + nz * cosA;
+              const nx1 = nx;
+
+              const nx2 = nx1 * cosB - ny1 * sinB;
+              const ny2 = nx1 * sinB + ny1 * cosB;
+              const nz2 = nz1;
+
+              // Dot product with light direction
+              const luminance = nx2 * lx + ny2 * ly + nz2 * lz;
+
+              if (luminance > 0) {
+                // Map luminance to character ramp index (0 to 11)
+                const rampIndex = Math.min(RAMP_MAX, Math.floor(luminance * RAMP_MAX));
+                buffer[idx] = {
+                  char: LUMINANCE_RAMP.charAt(rampIndex),
+                  luminanceIndex: rampIndex
+                };
+              } else {
+                buffer[idx] = { char: ".", luminanceIndex: 0 };
+              }
+            }
+          }
+        }
+
+        // Build HTML output with Span elements for Palette colouring or plain text for Mono
+        const colorMode = state.colorMode;
+        let htmlLines = [];
+
+        for (let r = 0; r < rows; r++) {
+          let lineHtml = "";
+          const rowOffset = r * cols;
+          for (let c = 0; c < cols; c++) {
+            const item = buffer[rowOffset + c];
+            if (!item || item === " ") {
+              lineHtml += " ";
+            } else {
+              const ch = typeof item === "string" ? item : item.char;
+              if (colorMode === "mono") {
+                lineHtml += ch;
+              } else {
+                const lum = typeof item === "string" ? 6 : item.luminanceIndex;
+                const colHex = PALETTE_COLORS[lum] || PALETTE_COLORS[6];
+                lineHtml += '<span style="color:' + colHex + '">' + ch + '</span>';
+              }
+            }
+          }
+          htmlLines.push(lineHtml);
+        }
+
+        asciiPre.innerHTML = htmlLines.join("\n");
+      }
+
+      // --- Animation Loop & Time Stepping ---
+      let lastTime = performance.now();
+
+      function frame(now) {
+        if (!state.isPaused && !prefersReducedMotion) {
+          const dt = Math.min(0.05, (now - lastTime) * 0.001);
+          lastTime = now;
+
+          const dTheta = dt * state.speed;
+          state.A += 0.8 * dTheta;
+          state.B += 0.5 * dTheta;
+
+          // Apply gentle damping to inertial spin velocity if not actively dragging
+          if (!state.isDragging) {
+            state.A += state.velA;
+            state.B += state.velB;
+            state.velA *= 0.92;
+            state.velB *= 0.92;
+          }
+        } else {
+          lastTime = now;
+        }
+
+        renderFrame();
+        requestAnimationFrame(frame);
+      }
+
+      // --- Interactive Drag & Touch Inertia ---
+      function onPointerDown(e) {
+        state.isDragging = true;
+        state.lastMouseX = e.clientX || (e.touches && e.touches[0].clientX);
+        state.lastMouseY = e.clientY || (e.touches && e.touches[0].clientY);
+      }
+
+      function onPointerMove(e) {
+        if (!state.isDragging) return;
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        if (clientX === undefined || clientY === undefined) return;
+
+        const dx = clientX - state.lastMouseX;
+        const dy = clientY - state.lastMouseY;
+
+        state.lastMouseX = clientX;
+        state.lastMouseY = clientY;
+
+        // Map drag deltas to rotation momentum
+        state.velB = dx * 0.008;
+        state.velA = -dy * 0.008;
+
+        state.B += state.velB;
+        state.A += state.velA;
+
+        renderFrame();
+      }
+
+      function onPointerUp() {
+        state.isDragging = false;
+      }
+
+      // --- Event Listeners ---
+      stageContainer.addEventListener("mousedown", onPointerDown);
+      window.addEventListener("mousemove", onPointerMove);
+      window.addEventListener("mouseup", onPointerUp);
+
+      stageContainer.addEventListener("touchstart", onPointerDown, { passive: true });
+      window.addEventListener("touchmove", onPointerMove, { passive: true });
+      window.addEventListener("touchend", onPointerUp);
+
+      // Object shape buttons
+      document.querySelectorAll("[data-object]").forEach(btn => {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("[data-object]").forEach(b => b.classList.remove("active"));
+          this.classList.add("active");
+          switchObject(this.getAttribute("data-object"));
+        });
+      });
+
+      // Colour mode buttons
+      document.querySelectorAll("[data-color]").forEach(btn => {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("[data-color]").forEach(b => b.classList.remove("active"));
+          this.classList.add("active");
+          state.colorMode = this.getAttribute("data-color");
+        });
+      });
+
+      detailSlider.addEventListener("input", function () {
+        state.cols = parseInt(this.value, 10);
+        detailValue.textContent = state.cols + " cols";
+      });
+
+      speedSlider.addEventListener("input", function () {
+        state.speed = parseFloat(this.value);
+        speedValue.textContent = state.speed.toFixed(1) + "x";
+      });
+
+      function togglePause() {
+        state.isPaused = !state.isPaused;
+        pauseBtn.textContent = state.isPaused ? "Resume" : "Pause";
+        pauseBtn.classList.toggle("btn-primary", state.isPaused);
+      }
+
+      pauseBtn.addEventListener("click", togglePause);
+
+      resetBtn.addEventListener("click", function () {
+        state.A = 0.0;
+        state.B = 0.0;
+        state.velA = 0.012;
+        state.velB = 0.009;
+      });
+
+      window.addEventListener("keydown", function (e) {
+        if (e.code === "Space") {
+          e.preventDefault();
+          togglePause();
+        }
+      });
+
+      if (reducedMotionQuery.addEventListener) {
+        reducedMotionQuery.addEventListener("change", function (e) {
+          prefersReducedMotion = e.matches;
+        });
+      }
+
+      // --- Startup ---
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Photo Booth</title>
+  <style>
+    :root {
+      --bg-page: #1E1826;
+      --bg-panel: #2A2233;
+      --bg-input: #17121E;
+      --border-color: #3D324A;
+      --border-hover: #574869;
+      --text-main: #EDE7F2;
+      --text-muted: #9B8FA8;
+      --accent: #E8873A;
+      --accent-hover: #F29A52;
+      --accent-dim: rgba(232, 135, 58, 0.16);
+      --radius: 14px;
+      --radius-sm: 8px;
+      --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.4;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Main Single-Screen Layout */
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+      padding: 14px;
+      gap: 14px;
+    }
+
+    /* Top Bar / Drop Zone */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background-color: var(--bg-panel);
+      border: 2px dashed var(--border-color);
+      border-radius: var(--radius);
+      padding: 10px 18px;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .top-bar.drag-over {
+      border-color: var(--accent);
+      background-color: #32273D;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .brand-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background-color: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -1px;
+      user-select: none;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .drop-prompt {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex: 1;
+      min-width: 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .drop-prompt strong {
+      color: var(--text-main);
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Workspace: Sidebar + Output */
+    .workspace {
+      display: flex;
+      flex: 1;
+      gap: 14px;
+      min-height: 0;
+    }
+
+    /* Controls Sidebar */
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background-color: var(--bg-panel);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .control-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .control-value {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* Custom Range Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--bg-input);
+      border-radius: 999px;
+      outline: none;
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg-page);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg-page);
+      cursor: pointer;
+    }
+
+    input[type="range"]:focus-visible {
+      border-color: var(--accent);
+    }
+
+    /* Segmented Option Buttons */
+    .option-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+
+    .option-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .option-btn {
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .option-row .option-btn {
+      justify-content: center;
+      text-align: center;
+      padding: 8px 4px;
+    }
+
+    .option-btn:hover {
+      border-color: var(--border-hover);
+    }
+
+    .option-btn.active {
+      background-color: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--text-main);
+      font-weight: 700;
+    }
+
+    .ramp-preview {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-panel);
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      white-space: pre;
+    }
+
+    .option-btn.active .ramp-preview {
+      color: var(--accent);
+    }
+
+    /* Palette Swatches Preview */
+    .palette-swatches {
+      display: flex;
+      gap: 5px;
+      margin-top: 2px;
+      padding: 6px 8px;
+      background: var(--bg-input);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .swatch-list {
+      display: flex;
+      gap: 4px;
+    }
+
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* Toggle Row */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 7px 10px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 12px;
+    }
+
+    .toggle-row input {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    /* Buttons */
+    .btn {
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: #1E1826;
+      border-color: var(--accent);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+      border-color: var(--accent-hover);
+      color: #1E1826;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .action-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stats-bar {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding-top: 2px;
+    }
+
+    /* Output Stage */
+    .stage {
+      flex: 1;
+      background-color: var(--bg-panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--border-color);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 12px;
+      min-width: 0;
+    }
+
+    .canvas-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    #asciiCanvas {
+      display: block;
+      background-color: #1E1826;
+      border-radius: 6px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Webcam Modal Overlay inside Stage */
+    .webcam-bar {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(42, 34, 51, 0.95);
+      border: 1px solid var(--accent);
+      padding: 8px 14px;
+      border-radius: 999px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      z-index: 10;
+    }
+
+    .webcam-bar.visible {
+      display: flex;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent);
+    }
+
+    /* Status Pill Feedback */
+    .status-toast {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background-color: var(--accent);
+      color: #1E1826;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      pointer-events: none;
+      opacity: 0;
+      z-index: 20;
+    }
+
+    .status-toast.show {
+      opacity: 1;
+    }
+
+    /* Full-window drag overlay indicator */
+    .drop-overlay {
+      position: fixed;
+      inset: 14px;
+      background-color: rgba(30, 24, 38, 0.88);
+      border: 3px dashed var(--accent);
+      border-radius: var(--radius);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .drop-overlay.active {
+      display: flex;
+    }
+
+    .drop-overlay-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* Responsive adjustments for smaller screens */
+    @media (max-width: 860px) {
+      html, body {
+        overflow: auto;
+      }
+      .app-shell {
+        height: auto;
+        min-height: 100vh;
+      }
+      .top-bar {
+        flex-wrap: wrap;
+      }
+      .drop-prompt {
+        order: 3;
+        width: 100%;
+        flex: none;
+        padding-top: 4px;
+      }
+      .workspace {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+      }
+      .stage {
+        min-height: 62vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <!-- Top Drop Zone & File Picker Bar -->
+    <header class="top-bar" id="dropZone">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">@#</div>
+        <div>
+          <div class="brand-title">ASCII Photo Booth</div>
+          <div class="brand-subtitle">100% Local Browser Conversion</div>
+        </div>
+      </div>
+
+      <div class="drop-prompt">
+        <span id="fileNameDisplay">Drop any image anywhere on the page, paste from clipboard, or pick a file</span>
+      </div>
+
+      <div class="top-actions">
+        <input type="file" id="fileInput" accept="image/*" hidden>
+        <button type="button" class="btn btn-primary" id="pickFileBtn">Choose Image</button>
+        <button type="button" class="btn" id="webcamBtn">Webcam</button>
+        <button type="button" class="btn" id="sampleBtn" title="Load built-in test portrait">Sample Art</button>
+      </div>
+    </header>
+
+    <!-- Main Single-Screen Workspace -->
+    <div class="workspace">
+      <!-- Left Controls Panel -->
+      <aside class="sidebar" aria-label="ASCII Controls">
+        <!-- Detail (Columns) -->
+        <div class="control-group">
+          <div class="control-header">
+            <label class="control-label" for="detailSlider">Detail (Columns)</label>
+            <span class="control-value" id="detailValue">120 cols</span>
+          </div>
+          <input type="range" id="detailSlider" min="40" max="240" step="2" value="120">
+        </div>
+
+        <!-- Contrast -->
+        <div class="control-group">
+          <div class="control-header">
+            <label class="control-label" for="contrastSlider">Contrast</label>
+            <span class="control-value" id="contrastValue">0</span>
+          </div>
+          <input type="range" id="contrastSlider" min="-80" max="100" step="1" value="0">
+        </div>
+
+        <!-- Character Set Picker -->
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Character Set</span>
+          </div>
+          <div class="option-grid" role="radiogroup" aria-label="Character Set">
+            <button type="button" class="option-btn active" data-ramp="classic">
+              <span>Classic</span>
+              <span class="ramp-preview">&quot; .:-=+*#%@&quot;</span>
+            </button>
+            <button type="button" class="option-btn" data-ramp="blocks">
+              <span>Blocks</span>
+              <span class="ramp-preview">&quot; ░▒▓█&quot;</span>
+            </button>
+            <button type="button" class="option-btn" data-ramp="minimal">
+              <span>Minimal</span>
+              <span class="ramp-preview">&quot; .:+#&quot;</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Colour Mode Picker -->
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Colour Mode</span>
+          </div>
+          <div class="option-row" role="radiogroup" aria-label="Colour Mode">
+            <button type="button" class="option-btn" data-color="original">Original</button>
+            <button type="button" class="option-btn" data-color="mono">Mono</button>
+            <button type="button" class="option-btn active" data-color="palette">Palette</button>
+          </div>
+          <div class="palette-swatches" id="palettePreview" title="Fixed Palette Colours">
+            <span style="font-size: 11px; color: var(--text-muted);">Snap palette:</span>
+            <div class="swatch-list">
+              <span class="swatch" style="background: #1E1826;" title="Deep Purple #1E1826"></span>
+              <span class="swatch" style="background: #9B8FA8;" title="Lavender #9B8FA8"></span>
+              <span class="swatch" style="background: #EDE7F2;" title="Near-White #EDE7F2"></span>
+              <span class="swatch" style="background: #E8873A;" title="Amber #E8873A"></span>
+              <span class="swatch" style="background: #F2C94C;" title="Yellow #F2C94C"></span>
+              <span class="swatch" style="background: #7FB8D9;" title="Blue #7FB8D9"></span>
+              <span class="swatch" style="background: #E85C8A;" title="Pink #E85C8A"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Invert Ramp Toggle -->
+        <div class="control-group">
+          <label class="toggle-row" for="invertToggle">
+            <span>Invert Brightness Ramp</span>
+            <input type="checkbox" id="invertToggle">
+          </label>
+        </div>
+
+        <!-- Export Actions -->
+        <div class="sidebar-footer">
+          <div class="action-pair">
+            <button type="button" class="btn" id="copyTextBtn">Copy as text</button>
+            <button type="button" class="btn btn-primary" id="downloadPngBtn">Download PNG</button>
+          </div>
+          <div class="stats-bar">
+            <span id="gridDimensions">120 × 68 cells</span>
+            <span id="charCount">8,160 chars</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main ASCII Output Stage -->
+      <main class="stage" id="stageContainer">
+        <div class="status-toast" id="statusToast" role="status" aria-live="polite">Copied!</div>
+
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <canvas id="asciiCanvas" aria-label="Rendered ASCII Art Output"></canvas>
+        </div>
+
+        <!-- Live Webcam Controls when active -->
+        <div class="webcam-bar" id="webcamBar">
+          <span class="live-dot"></span>
+          <span>Live Camera Feed</span>
+          <button type="button" class="btn btn-primary" id="freezeWebcamBtn">Freeze Frame</button>
+          <button type="button" class="btn" id="stopWebcamBtn">Stop</button>
+        </div>
+      </main>
+    </div>
+
+    <!-- Full-Window Drop Overlay -->
+    <div class="drop-overlay" id="dropOverlay">
+      <div class="drop-overlay-title">Drop Image to Convert to ASCII</div>
+      <div style="color: var(--text-main);">Processed 100% locally in your browser</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // --- Configuration & Constants ---
+      const RAMPS = {
+        classic: " .:-=+*#%@", // Space for brightest, @ for darkest
+        blocks:  " \u2591\u2592\u2593\u2588", // " ░▒▓█"
+        minimal: " .:+#"
+      };
+
+      // Fixed Palette for 'palette' colour mode
+      const BACKGROUND_HEX = "#1E1826";
+      const MONO_CREAM_HEX = "#EDE7F2";
+
+      // All 7 specified colours (including deep purple #1E1826)
+      const FIXED_PALETTE = [
+        { hex: "#1E1826", r: 30,  g: 24,  b: 38  }, // deep purple background
+        { hex: "#9B8FA8", r: 155, g: 143, b: 168 }, // lavender
+        { hex: "#EDE7F2", r: 237, g: 231, b: 242 }, // near-white
+        { hex: "#E8873A", r: 232, g: 135, b: 58  }, // amber
+        { hex: "#F2C94C", r: 242, g: 201, b: 76  }, // yellow
+        { hex: "#7FB8D9", r: 127, g: 184, b: 217 }, // blue
+        { hex: "#E85C8A", r: 232, g: 92,  b: 138 }  // pink
+      ];
+
+      // Cell aspect ratio correction: characters are roughly 2x taller than wide
+      const CELL_ASPECT_RATIO = 0.5;
+
+      // Internal rendering font metrics on the high-resolution output canvas
+      const RENDER_CELL_WIDTH = 10;
+      const RENDER_CELL_HEIGHT = 20;
+      const RENDER_FONT = '16px "Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+
+      // --- Application State ---
+      const state = {
+        columns: 120,
+        contrast: 0,
+        rampKey: "classic",
+        colorMode: "palette",
+        invert: false,
+        sourceCanvas: document.createElement("canvas"),
+        sampleCanvas: document.createElement("canvas"),
+        lastAsciiText: "",
+        webcamStream: null,
+        webcamVideo: null,
+        webcamRafId: null
+      };
+
+      // --- DOM Elements ---
+      const asciiCanvas = document.getElementById("asciiCanvas");
+      const asciiCtx = asciiCanvas.getContext("2d", { alpha: false });
+      const canvasWrapper = document.getElementById("canvasWrapper");
+      const detailSlider = document.getElementById("detailSlider");
+      const detailValue = document.getElementById("detailValue");
+      const contrastSlider = document.getElementById("contrastSlider");
+      const contrastValue = document.getElementById("contrastValue");
+      const invertToggle = document.getElementById("invertToggle");
+      const copyTextBtn = document.getElementById("copyTextBtn");
+      const downloadPngBtn = document.getElementById("downloadPngBtn");
+      const pickFileBtn = document.getElementById("pickFileBtn");
+      const fileInput = document.getElementById("fileInput");
+      const sampleBtn = document.getElementById("sampleBtn");
+      const webcamBtn = document.getElementById("webcamBtn");
+      const webcamBar = document.getElementById("webcamBar");
+      const freezeWebcamBtn = document.getElementById("freezeWebcamBtn");
+      const stopWebcamBtn = document.getElementById("stopWebcamBtn");
+      const fileNameDisplay = document.getElementById("fileNameDisplay");
+      const gridDimensions = document.getElementById("gridDimensions");
+      const charCount = document.getElementById("charCount");
+      const statusToast = document.getElementById("statusToast");
+      const dropZone = document.getElementById("dropZone");
+      const dropOverlay = document.getElementById("dropOverlay");
+
+      let toastTimer = null;
+
+      function showToast(message) {
+        statusToast.textContent = message;
+        statusToast.classList.add("show");
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          statusToast.classList.remove("show");
+        }, 1800);
+      }
+
+      // --- Procedural Sample Portrait Generator ---
+      // Generates a vivid, high-contrast synth-portrait with planets, geometric portrait features,
+      // and rich lighting so the user immediately sees the ASCII engine & colour modes in action.
+      function generateSampleArtwork() {
+        const w = 640;
+        const h = 480;
+        state.sourceCanvas.width = w;
+        state.sourceCanvas.height = h;
+        const ctx = state.sourceCanvas.getContext("2d");
+
+        // Deep cosmic sky gradient
+        const bgGrad = ctx.createLinearGradient(0, 0, w, h);
+        bgGrad.addColorStop(0, "#140F1D");
+        bgGrad.addColorStop(0.55, "#2D1E3E");
+        bgGrad.addColorStop(1, "#4B2545");
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        // Glowing sun / moon disc
+        const sunGrad = ctx.createRadialGradient(w * 0.72, h * 0.30, 10, w * 0.72, h * 0.30, 130);
+        sunGrad.addColorStop(0, "#FFF6D6");
+        sunGrad.addColorStop(0.35, "#F2C94C");
+        sunGrad.addColorStop(0.7, "#E8873A");
+        sunGrad.addColorStop(1, "rgba(232, 92, 138, 0)");
+        ctx.fillStyle = sunGrad;
+        ctx.beginPath();
+        ctx.arc(w * 0.72, h * 0.30, 130, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Retro horizontal sun stripes
+        ctx.fillStyle = "#2A1B38";
+        for (let i = 0; i < 5; i++) {
+          const y = h * 0.32 + i * 16;
+          ctx.fillRect(w * 0.52, y, 260, 4 + i * 1.5);
+        }
+
+        // Distant mountain range silhouette with rim lighting
+        ctx.beginPath();
+        ctx.moveTo(0, h * 0.72);
+        ctx.lineTo(w * 0.18, h * 0.48);
+        ctx.lineTo(w * 0.33, h * 0.63);
+        ctx.lineTo(w * 0.52, h * 0.42);
+        ctx.lineTo(w * 0.70, h * 0.62);
+        ctx.lineTo(w * 0.86, h * 0.49);
+        ctx.lineTo(w, h * 0.66);
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        const mtnGrad = ctx.createLinearGradient(0, h * 0.42, 0, h * 0.8);
+        mtnGrad.addColorStop(0, "#7FB8D9");
+        mtnGrad.addColorStop(0.5, "#4E4168");
+        mtnGrad.addColorStop(1, "#1A1423");
+        ctx.fillStyle = mtnGrad;
+        ctx.fill();
+
+        // Stylized Astronaut / Cyber-Portrait bust in foreground left-center
+        const cx = w * 0.37;
+        const cy = h * 0.56;
+
+        // Shoulders / Suit
+        const suitGrad = ctx.createLinearGradient(cx - 140, cy + 50, cx + 140, h);
+        suitGrad.addColorStop(0, "#EDE7F2");
+        suitGrad.addColorStop(0.5, "#9B8FA8");
+        suitGrad.addColorStop(1, "#2A2233");
+        ctx.fillStyle = suitGrad;
+        ctx.beginPath();
+        ctx.ellipse(cx, h * 0.96, 175, 135, 0, Math.PI, 0, false);
+        ctx.fill();
+
+        // Collar ring accent
+        ctx.strokeStyle = "#E8873A";
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(cx, cy + 75, 76, 0.15 * Math.PI, 0.85 * Math.PI);
+        ctx.stroke();
+
+        // Outer Helmet Sphere
+        const helmetGrad = ctx.createRadialGradient(cx - 38, cy - 45, 18, cx, cy, 120);
+        helmetGrad.addColorStop(0, "#FFFFFF");
+        helmetGrad.addColorStop(0.45, "#EDE7F2");
+        helmetGrad.addColorStop(0.78, "#9B8FA8");
+        helmetGrad.addColorStop(1, "#2A2233");
+        ctx.fillStyle = helmetGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy - 12, 112, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Helmet Visor (reflective pink/blue/amber gradient)
+        const visorGrad = ctx.createLinearGradient(cx - 75, cy - 60, cx + 85, cy + 40);
+        visorGrad.addColorStop(0, "#1E1826");
+        visorGrad.addColorStop(0.28, "#7FB8D9");
+        visorGrad.addColorStop(0.65, "#E85C8A");
+        visorGrad.addColorStop(1, "#F2C94C");
+        ctx.fillStyle = visorGrad;
+        ctx.beginPath();
+        ctx.ellipse(cx + 12, cy - 8, 78, 56, -0.06, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bright specular visor highlight
+        ctx.fillStyle = "#FFFFFF";
+        ctx.beginPath();
+        ctx.ellipse(cx - 22, cy - 34, 26, 10, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Floating stars / bokeh orbs
+        const stars = [
+          { x: 0.10, y: 0.16, r: 10, c: "#F2C94C" },
+          { x: 0.22, y: 0.10, r: 6,  c: "#EDE7F2" },
+          { x: 0.48, y: 0.15, r: 8,  c: "#7FB8D9" },
+          { x: 0.88, y: 0.14, r: 9,  c: "#E85C8A" },
+          { x: 0.12, y: 0.34, r: 7,  c: "#E8873A" }
+        ];
+        stars.forEach(s => {
+          ctx.fillStyle = s.c;
+          ctx.beginPath();
+          ctx.arc(w * s.x, h * s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        fileNameDisplay.innerHTML = "Showing built-in sample: <strong>Cosmic Visor Portrait</strong> (Drop an image to replace)";
+        renderAscii();
+      }
+
+      // --- Colour Matching Helpers ---
+      function clampByte(val) {
+        return val < 0 ? 0 : (val > 255 ? 255 : (val | 0));
+      }
+
+      // Nearest colour in FIXED_PALETTE using weighted perceptual Euclidean distance in RGB
+      function findNearestPaletteColor(r, g, b) {
+        let bestHex = FIXED_PALETTE[0].hex;
+        let minDistance = Infinity;
+
+        for (let i = 0; i < FIXED_PALETTE.length; i++) {
+          const p = FIXED_PALETTE[i];
+          const dr = r - p.r;
+          const dg = g - p.g;
+          const db = b - p.b;
+          // Standard red-mean perceptual weights
+          const dist = dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestHex = p.hex;
+          }
+        }
+        return bestHex;
+      }
+
+      // --- Core ASCII Conversion & Canvas Renderer ---
+      function renderAscii() {
+        const srcW = state.sourceCanvas.width;
+        const srcH = state.sourceCanvas.height;
+        if (!srcW || !srcH) return;
+
+        const cols = state.columns;
+        // Correct for characters being ~2x taller than wide (cell height = 2x cell width)
+        const rows = Math.max(1, Math.round(cols * (srcH / srcW) * CELL_ASPECT_RATIO));
+
+        // 1. Draw the image to the offscreen sampling canvas scaled down to the grid (cols x rows)
+        const sampleCanvas = state.sampleCanvas;
+        sampleCanvas.width = cols;
+        sampleCanvas.height = rows;
+        const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+
+        // Enable smoothing so scaling down averages pixels cleanly across each cell
+        sampleCtx.imageSmoothingEnabled = true;
+        sampleCtx.imageSmoothingQuality = "high";
+        sampleCtx.clearRect(0, 0, cols, rows);
+        sampleCtx.drawImage(state.sourceCanvas, 0, 0, cols, rows);
+
+        const imgData = sampleCtx.getImageData(0, 0, cols, rows).data;
+
+        // Contrast factor calculation (standard [-100..100] contrast formula)
+        const contrast = state.contrast;
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+        const ramp = RAMPS[state.rampKey] || RAMPS.classic;
+        const rampMaxIndex = ramp.length - 1;
+        const colorMode = state.colorMode;
+        const invert = state.invert;
+
+        // 2. Prepare visible output canvas
+        const outWidth = cols * RENDER_CELL_WIDTH;
+        const outHeight = rows * RENDER_CELL_HEIGHT;
+        if (asciiCanvas.width !== outWidth || asciiCanvas.height !== outHeight) {
+          asciiCanvas.width = outWidth;
+          asciiCanvas.height = outHeight;
+        }
+
+        // Fill dark soft-purple background #1E1826
+        asciiCtx.fillStyle = BACKGROUND_HEX;
+        asciiCtx.fillRect(0, 0, outWidth, outHeight);
+
+        asciiCtx.font = RENDER_FONT;
+        asciiCtx.textBaseline = "middle";
+        asciiCtx.textAlign = "center";
+
+        const textLines = [];
+
+        // 3. Iterate through each grid cell, sample brightness, pick ramp character & draw
+        for (let y = 0; y < rows; y++) {
+          let rowString = "";
+          const centerY = y * RENDER_CELL_HEIGHT + RENDER_CELL_HEIGHT * 0.52;
+
+          for (let x = 0; x < cols; x++) {
+            const idx = (y * cols + x) * 4;
+            const rawR = imgData[idx];
+            const rawG = imgData[idx + 1];
+            const rawB = imgData[idx + 2];
+            const alpha = imgData[idx + 3] / 255;
+
+            // Blend transparent pixels against the #1E1826 background
+            const blendedR = rawR * alpha + 30 * (1 - alpha);
+            const blendedG = rawG * alpha + 24 * (1 - alpha);
+            const blendedB = rawB * alpha + 38 * (1 - alpha);
+
+            // Apply contrast adjustment to RGB channels
+            const r = clampByte(factor * (blendedR - 128) + 128);
+            const g = clampByte(factor * (blendedG - 128) + 128);
+            const b = clampByte(factor * (blendedB - 128) + 128);
+
+            // Perceived luminance (0 = darkest, 255 = brightest)
+            const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+            let normalized = brightness / 255;
+            if (invert) {
+              normalized = 1 - normalized;
+            }
+
+            // Pick character from ramp:
+            // Space (index 0) is for brightest, '@' (last index) is for darkest
+            const charIndex = Math.round((1 - normalized) * rampMaxIndex);
+            const ch = ramp.charAt(charIndex);
+            rowString += ch;
+
+            // Skip drawing spaces for speed and crisp background
+            if (ch === " ") continue;
+
+            if (colorMode === "mono") {
+              asciiCtx.fillStyle = MONO_CREAM_HEX;
+            } else if (colorMode === "original") {
+              asciiCtx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+            } else {
+              // Palette mode: snap to nearest colour in fixed palette
+              const snappedHex = findNearestPaletteColor(r, g, b);
+              // If a dark pixel snaps to the background colour #1E1826, still allow subtle visibility
+              // or render it as the snapped colour
+              asciiCtx.fillStyle = snappedHex;
+            }
+
+            const centerX = x * RENDER_CELL_WIDTH + RENDER_CELL_WIDTH * 0.5;
+            asciiCtx.fillText(ch, centerX, centerY);
+          }
+
+          textLines.push(rowString);
+        }
+
+        state.lastAsciiText = textLines.join("\n");
+
+        // Update UI stats
+        gridDimensions.textContent = cols + " × " + rows + " cells";
+        charCount.textContent = (cols * rows).toLocaleString() + " chars";
+
+        fitCanvasToStage();
+      }
+
+      // Scales the CSS display dimensions of the output canvas so it always fits inside the stage neatly
+      function fitCanvasToStage() {
+        const availW = canvasWrapper.clientWidth;
+        const availH = canvasWrapper.clientHeight;
+        if (!availW || !availH || !asciiCanvas.width || !asciiCanvas.height) return;
+
+        const scale = Math.min(availW / asciiCanvas.width, availH / asciiCanvas.height);
+        const displayW = Math.max(1, Math.floor(asciiCanvas.width * scale));
+        const displayH = Math.max(1, Math.floor(asciiCanvas.height * scale));
+
+        asciiCanvas.style.width = displayW + "px";
+        asciiCanvas.style.height = displayH + "px";
+      }
+
+      // --- Image File Loading ---
+      function loadImageFile(file) {
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+          showToast("Please choose a valid image file");
+          return;
+        }
+
+        stopWebcam();
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const img = new Image();
+          img.onload = function () {
+            // Cap internal source canvas dimensions to keep real-time slider scrubbing instant
+            const maxDim = 1600;
+            let w = img.naturalWidth || img.width;
+            let h = img.naturalHeight || img.height;
+            if (w > maxDim || h > maxDim) {
+              const ratio = Math.min(maxDim / w, maxDim / h);
+              w = Math.round(w * ratio);
+              h = Math.round(h * ratio);
+            }
+            state.sourceCanvas.width = w;
+            state.sourceCanvas.height = h;
+            const ctx = state.sourceCanvas.getContext("2d");
+            ctx.clearRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+
+            fileNameDisplay.innerHTML = "Loaded: <strong>" + escapeHtml(file.name) + "</strong> (" + img.naturalWidth + "×" + img.naturalHeight + ")";
+            renderAscii();
+            showToast("Image loaded!");
+          };
+          img.onerror = function () {
+            showToast("Could not decode image file");
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function (m) {
+          return ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            "\"": "&quot;",
+            "'": "&#39;"
+          })[m];
+        });
+      }
+
+      // --- Optional Live Webcam Photo Booth Mode ---
+      async function startWebcam() {
+        if (state.webcamStream) {
+          stopWebcam();
+          return;
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          showToast("Webcam not supported in this browser");
+          return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+            audio: false
+          });
+          state.webcamStream = stream;
+          const video = document.createElement("video");
+          video.srcObject = stream;
+          video.playsInline = true;
+          video.muted = true;
+          await video.play();
+          state.webcamVideo = video;
+
+          webcamBar.classList.add("visible");
+          webcamBtn.classList.add("btn-primary");
+          fileNameDisplay.innerHTML = "Live <strong>Webcam Photo Booth</strong> active";
+
+          const loop = () => {
+            if (!state.webcamStream) return;
+            if (video.readyState >= 2) {
+              const vw = video.videoWidth || 640;
+              const vh = video.videoHeight || 480;
+              state.sourceCanvas.width = vw;
+              state.sourceCanvas.height = vh;
+              const sCtx = state.sourceCanvas.getContext("2d");
+              // Mirror horizontally like a photo booth mirror
+              sCtx.save();
+              sCtx.translate(vw, 0);
+              sCtx.scale(-1, 1);
+              sCtx.drawImage(video, 0, 0, vw, vh);
+              sCtx.restore();
+              renderAscii();
+            }
+            state.webcamRafId = requestAnimationFrame(loop);
+          };
+          state.webcamRafId = requestAnimationFrame(loop);
+        } catch (err) {
+          showToast("Camera permission denied or unavailable");
+        }
+      }
+
+      function stopWebcam() {
+        if (state.webcamRafId) {
+          cancelAnimationFrame(state.webcamRafId);
+          state.webcamRafId = null;
+        }
+        if (state.webcamStream) {
+          state.webcamStream.getTracks().forEach(t => t.stop());
+          state.webcamStream = null;
+        }
+        state.webcamVideo = null;
+        webcamBar.classList.remove("visible");
+        webcamBtn.classList.remove("btn-primary");
+      }
+
+      // --- Clipboard & Download Actions ---
+      function copyAsciiText() {
+        if (!state.lastAsciiText) return;
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(state.lastAsciiText).then(() => {
+            showToast("Copied ASCII text to clipboard!");
+          }).catch(() => {
+            fallbackCopyText(state.lastAsciiText);
+          });
+        } else {
+          fallbackCopyText(state.lastAsciiText);
+        }
+      }
+
+      function fallbackCopyText(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+          document.execCommand("copy");
+          showToast("Copied ASCII text to clipboard!");
+        } catch (e) {
+          showToast("Copy failed");
+        }
+        document.body.removeChild(ta);
+      }
+
+      function downloadPng() {
+        if (!asciiCanvas.width) return;
+        const dataUrl = asciiCanvas.toDataURL("image/png");
+        const link = document.createElement("a");
+        link.download = "ascii-photo-booth-" + state.columns + "cols.png";
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast("PNG downloaded!");
+      }
+
+      // --- Event Listeners ---
+      detailSlider.addEventListener("input", function () {
+        state.columns = parseInt(this.value, 10);
+        detailValue.textContent = state.columns + " cols";
+        renderAscii();
+      });
+
+      contrastSlider.addEventListener("input", function () {
+        state.contrast = parseInt(this.value, 10);
+        contrastValue.textContent = (state.contrast > 0 ? "+" : "") + state.contrast;
+        renderAscii();
+      });
+
+      invertToggle.addEventListener("change", function () {
+        state.invert = this.checked;
+        renderAscii();
+      });
+
+      // Character Set buttons
+      document.querySelectorAll("[data-ramp]").forEach(btn => {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("[data-ramp]").forEach(b => b.classList.remove("active"));
+          this.classList.add("active");
+          state.rampKey = this.getAttribute("data-ramp");
+          renderAscii();
+        });
+      });
+
+      // Colour Mode buttons
+      document.querySelectorAll("[data-color]").forEach(btn => {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("[data-color]").forEach(b => b.classList.remove("active"));
+          this.classList.add("active");
+          state.colorMode = this.getAttribute("data-color");
+          renderAscii();
+        });
+      });
+
+      // File picking & Sample & Webcam buttons
+      pickFileBtn.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", function () {
+        if (this.files && this.files[0]) {
+          loadImageFile(this.files[0]);
+          this.value = "";
+        }
+      });
+
+      sampleBtn.addEventListener("click", () => {
+        stopWebcam();
+        generateSampleArtwork();
+        showToast("Sample artwork loaded");
+      });
+
+      webcamBtn.addEventListener("click", startWebcam);
+      freezeWebcamBtn.addEventListener("click", () => {
+        stopWebcam();
+        fileNameDisplay.innerHTML = "Captured <strong>Webcam Snapshot</strong>";
+        showToast("Frame frozen!");
+      });
+      stopWebcamBtn.addEventListener("click", () => {
+        stopWebcam();
+        generateSampleArtwork();
+      });
+
+      copyTextBtn.addEventListener("click", copyAsciiText);
+      downloadPngBtn.addEventListener("click", downloadPng);
+
+      // Drag and drop anywhere on the window
+      let dragCounter = 0;
+
+      window.addEventListener("dragenter", function (e) {
+        e.preventDefault();
+        dragCounter++;
+        dropZone.classList.add("drag-over");
+        dropOverlay.classList.add("active");
+      });
+
+      window.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = "copy";
+        }
+      });
+
+      window.addEventListener("dragleave", function (e) {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          dropZone.classList.remove("drag-over");
+          dropOverlay.classList.remove("active");
+        }
+      });
+
+      window.addEventListener("drop", function (e) {
+        e.preventDefault();
+        dragCounter = 0;
+        dropZone.classList.remove("drag-over");
+        dropOverlay.classList.remove("active");
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          loadImageFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      // Also support pasting an image directly from the clipboard (Ctrl+V / Cmd+V)
+      window.addEventListener("paste", function (e) {
+        if (!e.clipboardData || !e.clipboardData.items) return;
+        for (let i = 0; i < e.clipboardData.items.length; i++) {
+          const item = e.clipboardData.items[i];
+          if (item.type.indexOf("image") !== -1) {
+            const file = item.getAsFile();
+            if (file) {
+              loadImageFile(file);
+              break;
+            }
+          }
+        }
+      });
+
+      window.addEventListener("resize", fitCanvasToStage);
+
+      // Initialize on load with the built-in procedural sample artwork
+      generateSampleArtwork();
+    })();
+  </script>
+</body>
+</html>

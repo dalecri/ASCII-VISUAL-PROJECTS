@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Life Clock</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #17121E;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body.cursor-hidden,
+    body.cursor-hidden #lifeCanvas {
+      cursor: none;
+    }
+
+    #lifeCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Tiny hint line that fades out after 5 seconds and never returns */
+    #hintLine {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      color: rgba(250, 230, 182, 0.48);
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 1.4s ease;
+      z-index: 10;
+    }
+
+    #hintLine.fade-out {
+      opacity: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #hintLine {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="lifeCanvas" aria-label="Conway's Game of Life Clock Screensaver"></canvas>
+  <div id="hintLine">click to pause</div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // --- Grid & Visual Constants ---
+      const PITCH = 22;           // Cell pitch in px
+      const GAP = 4;              // 4px gap between cells
+      const CELL_SIZE = PITCH - GAP; // 18px rounded square
+      const CORNER_RADIUS = 4.5;  // Rounded square radius
+      const BG_HEX = "#17121E";   // Deep purple board
+      const STEP_INTERVAL_MS = 1000 / 8; // 8 generations per second (125ms)
+      const FADE_DECAY_PER_SEC = 2.1;    // Dying cells dim over a few frames
+
+      // Cozy age-based palette (RGB triplets)
+      // 0: Cream (freshly born / stamped), 1: Amber, 2: Honey, 3: Rose, 4: Sage (ancient)
+      const AGE_PALETTE = [
+        [250, 230, 182], // cream  (age 1)
+        [245, 215, 153], // amber  (age 2-3)
+        [238, 188, 128], // honey  (age 4-7)
+        [229, 168, 178], // rose   (age 8-15)
+        [168, 204, 179]  // sage   (age 16+)
+      ];
+
+      // Subtle empty cell socket colour so the board reads as a quiet grid
+      const EMPTY_CELL_STYLE = "rgba(255, 245, 235, 0.022)";
+
+      // --- Chunky 5x7 Pixel Font for Time (HH:MM) ---
+      // Each digit is 5 columns wide by 7 rows tall, with 2-cell thick stems where possible
+      // so the stamped time stays legible and rich as Life evolves through it.
+      const FONT_5X7 = {
+        "0": [
+          "11111",
+          "11011",
+          "11011",
+          "11011",
+          "11011",
+          "11011",
+          "11111"
+        ],
+        "1": [
+          "00110",
+          "01110",
+          "00110",
+          "00110",
+          "00110",
+          "00110",
+          "01111"
+        ],
+        "2": [
+          "11111",
+          "00011",
+          "00011",
+          "11111",
+          "11000",
+          "11000",
+          "11111"
+        ],
+        "3": [
+          "11111",
+          "00011",
+          "00011",
+          "01111",
+          "00011",
+          "00011",
+          "11111"
+        ],
+        "4": [
+          "11011",
+          "11011",
+          "11011",
+          "11111",
+          "00011",
+          "00011",
+          "00011"
+        ],
+        "5": [
+          "11111",
+          "11000",
+          "11000",
+          "11111",
+          "00011",
+          "00011",
+          "11111"
+        ],
+        "6": [
+          "11111",
+          "11000",
+          "11000",
+          "11111",
+          "11011",
+          "11011",
+          "11111"
+        ],
+        "7": [
+          "11111",
+          "11011",
+          "00011",
+          "00110",
+          "00110",
+          "00110",
+          "00110"
+        ],
+        "8": [
+          "11111",
+          "11011",
+          "11011",
+          "11111",
+          "11011",
+          "11011",
+          "11111"
+        ],
+        "9": [
+          "11111",
+          "11011",
+          "11011",
+          "11111",
+          "00011",
+          "00011",
+          "11111"
+        ],
+        ":": [
+          "00000",
+          "01100",
+          "01100",
+          "00000",
+          "01100",
+          "01100",
+          "00000"
+        ]
+      };
+
+      // --- Smaller 3x5 Pixel Font for Date (e.g. OCT 27 or YYYY-MM-DD) ---
+      const FONT_3X5 = {
+        "0": ["111", "101", "101", "101", "111"],
+        "1": ["010", "110", "010", "010", "111"],
+        "2": ["111", "001", "111", "100", "111"],
+        "3": ["111", "001", "111", "001", "111"],
+        "4": ["101", "101", "111", "001", "001"],
+        "5": ["111", "100", "111", "001", "111"],
+        "6": ["111", "100", "111", "101", "111"],
+        "7": ["111", "001", "001", "010", "010"],
+        "8": ["111", "101", "111", "101", "111"],
+        "9": ["111", "101", "111", "001", "111"],
+        "-": ["000", "000", "111", "000", "000"],
+        " ": ["000", "000", "000", "000", "000"],
+        "A": ["010", "101", "111", "101", "101"],
+        "B": ["110", "101", "110", "101", "110"],
+        "C": ["111", "100", "100", "100", "111"],
+        "D": ["110", "101", "101", "101", "110"],
+        "E": ["111", "100", "110", "100", "111"],
+        "F": ["111", "100", "110", "100", "100"],
+        "G": ["111", "100", "101", "101", "111"],
+        "H": ["101", "101", "111", "101", "101"],
+        "I": ["111", "010", "010", "010", "111"],
+        "J": ["001", "001", "001", "101", "111"],
+        "K": ["101", "101", "110", "101", "101"],
+        "L": ["100", "100", "100", "100", "111"],
+        "M": ["101", "111", "111", "101", "101"],
+        "N": ["111", "101", "101", "101", "101"],
+        "O": ["111", "101", "101", "101", "111"],
+        "P": ["111", "101", "111", "100", "100"],
+        "R": ["111", "101", "110", "101", "101"],
+        "S": ["111", "100", "111", "001", "111"],
+        "T": ["111", "010", "010", "010", "010"],
+        "U": ["101", "101", "101", "101", "111"],
+        "V": ["101", "101", "101", "101", "010"],
+        "W": ["101", "101", "111", "111", "101"],
+        "Y": ["101", "101", "010", "010", "010"]
+      };
+
+      const MONTH_NAMES = [
+        "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+      ];
+
+      // --- DOM & Canvas Setup ---
+      const canvas = document.getElementById("lifeCanvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const hintLine = document.getElementById("hintLine");
+
+      let cols = 0;
+      let rows = 0;
+      let offsetX = 0;
+      let offsetY = 0;
+      let dpr = 1;
+
+      // Simulation buffers
+      let grid = new Uint8Array(0);       // 0 = dead, 1..255 = age in generations
+      let nextGrid = new Uint8Array(0);   // Scratch buffer for next generation
+      let trailFade = new Float32Array(0); // 0.0..1.0 brightness for dying cell trails
+      let trailColorIdx = new Uint8Array(0); // Palette index a cell had before dying
+
+      // Timing & Lifecycle State
+      const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      let prefersReducedMotion = reducedMotionQuery.matches;
+      let isPaused = false;
+      let isTabHidden = document.hidden;
+      let rafId = null;
+      let lastFrameTime = performance.now();
+      let stepAccumulator = 0;
+      let lastStampedMinuteKey = "";
+
+      // --- Helper Functions ---
+      function ageToPaletteIndex(age) {
+        if (age <= 1) return 0; // cream
+        if (age <= 3) return 1; // amber
+        if (age <= 7) return 2; // honey
+        if (age <= 15) return 3; // rose
+        return 4;               // sage
+      }
+
+      function wrapX(x) {
+        return ((x % cols) + cols) % cols;
+      }
+
+      function wrapY(y) {
+        return ((y % rows) + rows) % rows;
+      }
+
+      function setCellAlive(x, y, age) {
+        const wx = wrapX(x);
+        const wy = wrapY(y);
+        const idx = wy * cols + wx;
+        grid[idx] = age || 1;
+        trailFade[idx] = 1.0;
+        trailColorIdx[idx] = ageToPaletteIndex(grid[idx]);
+      }
+
+      function clearRectZone(x0, y0, w, h) {
+        for (let dy = 0; dy < h; dy++) {
+          const wy = wrapY(y0 + dy);
+          const rowOffset = wy * cols;
+          for (let dx = 0; dx < w; dx++) {
+            const wx = wrapX(x0 + dx);
+            const idx = rowOffset + wx;
+            if (grid[idx] > 0) {
+              // Let cleared cells leave a gentle fade trail instead of snapping hard
+              trailFade[idx] = Math.max(trailFade[idx], 0.55);
+              trailColorIdx[idx] = ageToPaletteIndex(grid[idx]);
+              grid[idx] = 0;
+            }
+          }
+        }
+      }
+
+      // --- Time & Date Formatting and Stamping ---
+      function getFormattedClockStrings(now) {
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
+        const timeStr = hh + ":" + mm;
+
+        const dayName = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][now.getDay()];
+        const monthStr = MONTH_NAMES[now.getMonth()];
+        const dayNum = String(now.getDate()).padStart(2, "0");
+
+        // Choose date string length based on available grid columns
+        // Full: "TUE OCT 27" (10 chars * 4 - 1 = 39 cols)
+        // Compact: "OCT 27" (6 chars * 4 - 1 = 23 cols)
+        const fullDate = dayName + " " + monthStr + " " + dayNum;
+        const compactDate = monthStr + " " + dayNum;
+        const dateStr = cols >= 46 ? fullDate : compactDate;
+
+        return {
+          timeStr: timeStr,
+          dateStr: dateStr,
+          minuteKey: hh + ":" + mm + ":" + now.getDate()
+        };
+      }
+
+      function stampTimeAndDate(now, seedInitialPatterns) {
+        if (!cols || !rows) return;
+
+        const info = getFormattedClockStrings(now || new Date());
+        lastStampedMinuteKey = info.minuteKey;
+
+        // Calculate dimensions of 5x7 Time string ("HH:MM")
+        // 5 chars * 5 width + 4 spaces * 2 cols = 33 cols wide, 7 rows tall
+        const timeCharW = 5;
+        const timeCharH = 7;
+        const timeSpacing = cols >= 44 ? 2 : 1;
+        const timeTotalW = info.timeStr.length * timeCharW + (info.timeStr.length - 1) * timeSpacing;
+
+        // Calculate dimensions of 3x5 Date string below the time
+        const dateCharW = 3;
+        const dateCharH = 5;
+        const dateSpacing = 1;
+        const dateTotalW = info.dateStr.length * dateCharW + (info.dateStr.length - 1) * dateSpacing;
+
+        const verticalGap = 3; // Rows between 5x7 time and 3x5 date
+        const blockTotalH = timeCharH + verticalGap + dateCharH;
+
+        const centerCol = Math.floor(cols / 2);
+        const centerRow = Math.floor(rows / 2);
+
+        const timeStartX = Math.floor(centerCol - timeTotalW / 2);
+        const timeStartY = Math.floor(centerRow - blockTotalH / 2);
+
+        const dateStartX = Math.floor(centerCol - dateTotalW / 2);
+        const dateStartY = timeStartY + timeCharH + verticalGap;
+
+        // Clear a quiet 2-cell breathing margin around the digits before stamping
+        // so the newly stamped minute starts crisp before the surrounding life frays and regrows it
+        clearRectZone(timeStartX - 2, timeStartY - 2, timeTotalW + 4, timeCharH + 4);
+        clearRectZone(dateStartX - 2, dateStartY - 1, dateTotalW + 4, dateCharH + 3);
+
+        // Stamp 5x7 Time digits
+        for (let c = 0; c < info.timeStr.length; c++) {
+          const ch = info.timeStr.charAt(c);
+          const glyph = FONT_5X7[ch];
+          if (!glyph) continue;
+          const charX = timeStartX + c * (timeCharW + timeSpacing);
+
+          for (let gy = 0; gy < timeCharH; gy++) {
+            const rowBits = glyph[gy];
+            for (let gx = 0; gx < timeCharW; gx++) {
+              if (rowBits.charAt(gx) === "1") {
+                // Give colon cells a slightly warmer age tint (amber) and digits cream
+                const initialAge = ch === ":" ? 2 : 1;
+                setCellAlive(charX + gx, timeStartY + gy, initialAge);
+              }
+            }
+          }
+        }
+
+        // Stamp 3x5 Date characters
+        for (let c = 0; c < info.dateStr.length; c++) {
+          const ch = info.dateStr.charAt(c);
+          const glyph = FONT_3X5[ch];
+          if (!glyph) continue;
+          const charX = dateStartX + c * (dateCharW + dateSpacing);
+
+          for (let gy = 0; gy < dateCharH; gy++) {
+            const rowBits = glyph[gy];
+            for (let gx = 0; gx < dateCharW; gx++) {
+              if (rowBits.charAt(gx) === "1") {
+                setCellAlive(charX + gx, dateStartY + gy, 3); // Honey/Amber tint for date
+              }
+            }
+          }
+        }
+
+        if (seedInitialPatterns && !prefersReducedMotion) {
+          seedAmbientLife();
+        }
+      }
+
+      // --- Ambient Life Seeding (Gliders, Blinkers, and Corner Soup) ---
+      const GLIDER_PATTERNS = [
+        // SE glider
+        [[0, 1, 0], [0, 0, 1], [1, 1, 1]],
+        // SW glider
+        [[0, 1, 0], [1, 0, 0], [1, 1, 1]],
+        // NE glider
+        [[1, 1, 1], [0, 0, 1], [0, 1, 0]],
+        // NW glider
+        [[1, 1, 1], [1, 0, 0], [0, 1, 0]]
+      ];
+
+      function stampPattern(x, y, matrix, age) {
+        for (let r = 0; r < matrix.length; r++) {
+          for (let c = 0; c < matrix[r].length; c++) {
+            if (matrix[r][c]) {
+              setCellAlive(x + c, y + r, age || 2);
+            }
+          }
+        }
+      }
+
+      function isNearCentre(x, y) {
+        const cx = cols * 0.5;
+        const cy = rows * 0.5;
+        return Math.abs(x - cx) < 24 && Math.abs(y - cy) < 13;
+      }
+
+      function seedAmbientLife() {
+        // Place 4 gliders and 4 blinkers away from the centre clock
+        const anchors = [
+          { x: Math.floor(cols * 0.14), y: Math.floor(rows * 0.18), glider: 0 },
+          { x: Math.floor(cols * 0.84), y: Math.floor(rows * 0.18), glider: 1 },
+          { x: Math.floor(cols * 0.16), y: Math.floor(rows * 0.80), glider: 2 },
+          { x: Math.floor(cols * 0.82), y: Math.floor(rows * 0.80), glider: 3 }
+        ];
+
+        for (let i = 0; i < anchors.length; i++) {
+          const a = anchors[i];
+          if (!isNearCentre(a.x, a.y)) {
+            stampPattern(a.x, a.y, GLIDER_PATTERNS[a.glider], 4);
+          }
+        }
+
+        // Seed several blinkers and a toad oscillator in outer quadrants
+        const blinkerSpots = [
+          { x: Math.floor(cols * 0.28), y: Math.floor(rows * 0.14) },
+          { x: Math.floor(cols * 0.72), y: Math.floor(rows * 0.15) },
+          { x: Math.floor(cols * 0.25), y: Math.floor(rows * 0.86) },
+          { x: Math.floor(cols * 0.74), y: Math.floor(rows * 0.85) }
+        ];
+
+        for (let i = 0; i < blinkerSpots.length; i++) {
+          const b = blinkerSpots[i];
+          if (!isNearCentre(b.x, b.y)) {
+            stampPattern(b.x, b.y, [[1, 1, 1]], 6);
+          }
+        }
+      }
+
+      function sprinkleCornerSoup() {
+        // Pick one of the four corners away from the centre and sprinkle a 7x7 random soup patch
+        const corners = [
+          { x: 4, y: 4 },
+          { x: Math.max(4, cols - 12), y: 4 },
+          { x: 4, y: Math.max(4, rows - 12) },
+          { x: Math.max(4, cols - 12), y: Math.max(4, rows - 12) }
+        ];
+        const pick = corners[Math.floor(Math.random() * corners.length)];
+
+        for (let dy = 0; dy < 7; dy++) {
+          for (let dx = 0; dx < 7; dx++) {
+            if (Math.random() < 0.42 && !isNearCentre(pick.x + dx, pick.y + dy)) {
+              setCellAlive(pick.x + dx, pick.y + dy, 2);
+            }
+          }
+        }
+
+        // Also launch a stray glider from another corner
+        const gliderCorner = corners[(Math.floor(Math.random() * corners.length) + 1) % corners.length];
+        const gPattern = GLIDER_PATTERNS[Math.floor(Math.random() * GLIDER_PATTERNS.length)];
+        stampPattern(gliderCorner.x, gliderCorner.y, gPattern, 5);
+      }
+
+      // --- Conway's Game of Life Step (B3/S23 with Toroidal Wrap-Around) ---
+      function stepGeneration() {
+        let totalAlive = 0;
+
+        for (let y = 0; y < rows; y++) {
+          const yUp = ((y - 1 + rows) % rows) * cols;
+          const yMid = y * cols;
+          const yDown = ((y + 1) % rows) * cols;
+
+          for (let x = 0; x < cols; x++) {
+            const xLeft = (x - 1 + cols) % cols;
+            const xRight = (x + 1) % cols;
+
+            // Count 8 wrap-around neighbours
+            let neighbours = 0;
+            if (grid[yUp + xLeft] > 0) neighbours++;
+            if (grid[yUp + x] > 0) neighbours++;
+            if (grid[yUp + xRight] > 0) neighbours++;
+            if (grid[yMid + xLeft] > 0) neighbours++;
+            if (grid[yMid + xRight] > 0) neighbours++;
+            if (grid[yDown + xLeft] > 0) neighbours++;
+            if (grid[yDown + x] > 0) neighbours++;
+            if (grid[yDown + xRight] > 0) neighbours++;
+
+            const idx = yMid + x;
+            const currentAge = grid[idx];
+
+            if (currentAge > 0) {
+              // Survival rule: S23
+              if (neighbours === 2 || neighbours === 3) {
+                const nextAge = currentAge < 254 ? currentAge + 1 : 254;
+                nextGrid[idx] = nextAge;
+                trailFade[idx] = 1.0;
+                trailColorIdx[idx] = ageToPaletteIndex(nextAge);
+                totalAlive++;
+              } else {
+                // Cell dies; keep its last palette colour and start its fade trail
+                nextGrid[idx] = 0;
+                trailFade[idx] = 0.72;
+                trailColorIdx[idx] = ageToPaletteIndex(currentAge);
+              }
+            } else {
+              // Birth rule: B3
+              if (neighbours === 3) {
+                nextGrid[idx] = 1;
+                trailFade[idx] = 1.0;
+                trailColorIdx[idx] = 0;
+                totalAlive++;
+              } else {
+                nextGrid[idx] = 0;
+              }
+            }
+          }
+        }
+
+        // Swap grid buffers
+        const temp = grid;
+        grid = nextGrid;
+        nextGrid = temp;
+
+        // If total population drops too low, sprinkle a small random soup patch in a corner
+        const minPopulationThreshold = Math.max(28, Math.floor(cols * rows * 0.018));
+        if (totalAlive < minPopulationThreshold) {
+          sprinkleCornerSoup();
+        }
+      }
+
+      // --- Canvas Drawing ---
+      function drawRoundedCell(x, y, size, r) {
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(x, y, size, size, r);
+        } else {
+          ctx.moveTo(x + r, y);
+          ctx.arcTo(x + size, y, x + size, y + size, r);
+          ctx.arcTo(x + size, y + size, x, y + size, r);
+          ctx.arcTo(x, y + size, x, y, r);
+          ctx.arcTo(x, y, x + size, y, r);
+          ctx.closePath();
+        }
+        ctx.fill();
+      }
+
+      function renderBoard(dt) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // Fill deep purple board #17121E
+        ctx.fillStyle = BG_HEX;
+        ctx.fillRect(0, 0, vw, vh);
+
+        // 1. Draw subtle empty cell sockets in a single batched path for high performance
+        ctx.fillStyle = EMPTY_CELL_STYLE;
+        ctx.beginPath();
+        for (let y = 0; y < rows; y++) {
+          const py = offsetY + y * PITCH;
+          for (let x = 0; x < cols; x++) {
+            const px = offsetX + x * PITCH;
+            if (ctx.roundRect) {
+              ctx.roundRect(px, py, CELL_SIZE, CELL_SIZE, CORNER_RADIUS);
+            } else {
+              ctx.rect(px, py, CELL_SIZE, CELL_SIZE);
+            }
+          }
+        }
+        ctx.fill();
+
+        // 2. Draw live cells and fading trail cells
+        for (let y = 0; y < rows; y++) {
+          const py = offsetY + y * PITCH;
+          const rowOffset = y * cols;
+
+          for (let x = 0; x < cols; x++) {
+            const idx = rowOffset + x;
+            const age = grid[idx];
+            let fade = trailFade[idx];
+
+            if (age === 0 && fade <= 0.01) continue;
+
+            const px = offsetX + x * PITCH;
+
+            if (age > 0) {
+              const pIdx = ageToPaletteIndex(age);
+              const rgb = AGE_PALETTE[pIdx];
+              ctx.fillStyle = "rgb(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ")";
+              drawRoundedCell(px, py, CELL_SIZE, CORNER_RADIUS);
+            } else if (fade > 0.01) {
+              // Dying trail cell dims smoothly over a few frames
+              const rgb = AGE_PALETTE[trailColorIdx[idx]] || AGE_PALETTE[0];
+              const alpha = Math.min(1, fade * 0.65).toFixed(3);
+              ctx.fillStyle = "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + "," + alpha + ")";
+              drawRoundedCell(px, py, CELL_SIZE, CORNER_RADIUS);
+
+              if (!isPaused && !prefersReducedMotion && dt > 0) {
+                fade = Math.max(0, fade - FADE_DECAY_PER_SEC * dt);
+                trailFade[idx] = fade;
+              }
+            }
+          }
+        }
+      }
+
+      // --- Exact Minute-Change Watcher & Animation Loop ---
+      function checkMinuteChange() {
+        const now = new Date();
+        const info = getFormattedClockStrings(now);
+        if (info.minuteKey !== lastStampedMinuteKey) {
+          stampTimeAndDate(now, false);
+          if (prefersReducedMotion || isPaused) {
+            renderBoard(0);
+          }
+        }
+      }
+
+      function animate(now) {
+        if (isTabHidden || prefersReducedMotion) {
+          rafId = null;
+          return;
+        }
+
+        const dt = Math.min(0.1, Math.max(0.001, (now - lastFrameTime) * 0.001));
+        lastFrameTime = now;
+
+        // Check if the visitor's clock just ticked over to a new minute
+        checkMinuteChange();
+
+        if (!isPaused) {
+          stepAccumulator += dt * 1000;
+          if (stepAccumulator >= STEP_INTERVAL_MS) {
+            stepAccumulator %= STEP_INTERVAL_MS;
+            stepGeneration();
+          }
+        }
+
+        renderBoard(dt);
+        rafId = requestAnimationFrame(animate);
+      }
+
+      function startLoopIfAllowed() {
+        if (prefersReducedMotion) {
+          if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          // Draw one static frame of the stamped time with no simulation
+          grid.fill(0);
+          trailFade.fill(0);
+          stampTimeAndDate(new Date(), false);
+          renderBoard(0);
+          return;
+        }
+
+        if (!isTabHidden && !rafId) {
+          lastFrameTime = performance.now();
+          rafId = requestAnimationFrame(animate);
+        }
+      }
+
+      // --- Resize & Grid Initialization ---
+      function resizeAndInit() {
+        dpr = window.devicePixelRatio || 1;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        canvas.width = Math.floor(vw * dpr);
+        canvas.height = Math.floor(vh * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const newCols = Math.max(20, Math.floor((vw - GAP) / PITCH));
+        const newRows = Math.max(14, Math.floor((vh - GAP) / PITCH));
+
+        // Centre the grid evenly inside the viewport
+        offsetX = Math.floor((vw - (newCols * PITCH - GAP)) / 2);
+        offsetY = Math.floor((vh - (newRows * PITCH - GAP)) / 2);
+
+        if (newCols !== cols || newRows !== rows) {
+          cols = newCols;
+          rows = newRows;
+          const total = cols * rows;
+          grid = new Uint8Array(total);
+          nextGrid = new Uint8Array(total);
+          trailFade = new Float32Array(total);
+          trailColorIdx = new Uint8Array(total);
+
+          stampTimeAndDate(new Date(), !prefersReducedMotion);
+        }
+
+        renderBoard(0);
+      }
+
+      // --- Pause / Resume & Cursor Auto-Hide ---
+      function togglePause() {
+        if (prefersReducedMotion) return;
+        isPaused = !isPaused;
+        renderBoard(0);
+      }
+
+      let cursorTimer = null;
+      function resetCursorTimer() {
+        document.body.classList.remove("cursor-hidden");
+        if (cursorTimer) clearTimeout(cursorTimer);
+        cursorTimer = setTimeout(function () {
+          document.body.classList.add("cursor-hidden");
+        }, 3000);
+      }
+
+      // --- Event Listeners ---
+      window.addEventListener("resize", resizeAndInit);
+
+      window.addEventListener("pointerdown", function (e) {
+        resetCursorTimer();
+        togglePause();
+      });
+
+      window.addEventListener("keydown", function (e) {
+        // Ignore modifier-only or browser shortcut combos like Cmd+R / F11
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        togglePause();
+      });
+
+      window.addEventListener("mousemove", resetCursorTimer, { passive: true });
+      window.addEventListener("pointermove", resetCursorTimer, { passive: true });
+
+      document.addEventListener("visibilitychange", function () {
+        isTabHidden = document.hidden;
+        if (isTabHidden && rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        } else if (!isTabHidden) {
+          checkMinuteChange();
+          startLoopIfAllowed();
+        }
+      });
+
+      if (reducedMotionQuery.addEventListener) {
+        reducedMotionQuery.addEventListener("change", function (e) {
+          prefersReducedMotion = e.matches;
+          startLoopIfAllowed();
+        });
+      }
+
+      // Keep static reduced-motion clock accurate on exact minute changes too
+      setInterval(checkMinuteChange, 1000);
+
+      // Fade out the tiny "click to pause" hint line after 5 seconds and remove it permanently
+      setTimeout(function () {
+        if (hintLine) {
+          hintLine.classList.add("fade-out");
+          setTimeout(function () {
+            if (hintLine && hintLine.parentNode) {
+              hintLine.parentNode.removeChild(hintLine);
+            }
+          }, 1500);
+        }
+      }, 5000);
+
+      // --- Startup ---
+      resizeAndInit();
+      resetCursorTimer();
+      startLoopIfAllowed();
+    })();
+  </script>
+</body>
+</html>
