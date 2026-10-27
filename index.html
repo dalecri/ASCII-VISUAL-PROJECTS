@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASCII Visual Projects — Cristobal D'Alessio</title>
+<meta name="description" content="Living pictures made of characters: ASCII ponds, flocks, weather, attractors, and slow art. Single-file HTML, vanilla JavaScript, no libraries.">
+<style>
+  :root{
+    --bg:#1E1826; --panel:#2A2233; --panel2:#241C2E; --line:#3A2F47;
+    --ink:#EDE7F2; --muted:#9B8FA8; --faint:#6E6182;
+    --amber:#E8873A; --pink:#E85C8A; --blue:#7FB8D9; --gold:#F2C94C; --mint:#72EFDD; --violet:#B79CED;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--amber); color:#1E1826}
+  a{color:inherit}
+  .wrap{max-width:1120px; margin:0 auto; padding:0 20px 64px}
+
+  header{padding:56px 0 8px; text-align:center}
+  .banner{
+    margin:0 auto 18px; display:inline-block; text-align:left;
+    color:var(--faint); font-size:11px; line-height:1.35; white-space:pre;
+    user-select:none;
+  }
+  .banner .w{color:var(--blue)} .banner .k{color:var(--amber)} .banner .l{color:#8FAE7C}
+  h1{font-size:clamp(28px,5vw,44px); font-weight:700; letter-spacing:-0.01em; margin:0 0 10px}
+  h1 .dot{color:var(--amber)}
+  .lede{color:var(--muted); max-width:620px; margin:0 auto; font-size:15px}
+  .meta{margin-top:14px; color:var(--faint); font-size:12px; letter-spacing:0.14em; text-transform:uppercase}
+  .meta b{color:var(--gold); font-weight:400}
+
+  #wave{
+    display:block; margin:26px auto 4px; max-width:760px; width:100%;
+    white-space:pre; overflow:hidden; text-align:center;
+    color:#3E6B8C; font-size:12px; line-height:1.2; user-select:none;
+  }
+
+  nav.toc{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:22px 0 6px}
+  nav.toc a{
+    text-decoration:none; font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:6px 14px;
+    background:var(--panel2); transition:border-color .15s, color .15s;
+  }
+  nav.toc a:hover{color:var(--ink); border-color:var(--amber)}
+
+  section{margin-top:44px}
+  .sec-head{display:flex; align-items:baseline; gap:12px; margin:0 2px 16px}
+  .sec-head h2{font-size:19px; margin:0; font-weight:700}
+  .sec-head .rule{flex:1; border-top:1px dashed var(--line); transform:translateY(-4px)}
+  .sec-head .count{color:var(--faint); font-size:12px}
+  .sec-sub{color:var(--muted); font-size:13.5px; margin:-8px 2px 16px}
+  .acc-emergent{color:var(--pink)} .acc-math{color:var(--blue)}
+  .acc-ambient{color:var(--gold)} .acc-toys{color:var(--mint)} .acc-tools{color:var(--violet)}
+
+  .grid{display:grid; grid-template-columns:1fr; gap:14px}
+  @media (min-width:640px){.grid{grid-template-columns:1fr 1fr}}
+  @media (min-width:1024px){.grid{grid-template-columns:1fr 1fr 1fr}}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:18px 18px 14px; display:flex; flex-direction:column; gap:8px;
+    transition:border-color .15s, transform .15s;
+  }
+  .card:hover{border-color:var(--amber); transform:translateY(-2px)}
+  .card h3{margin:0; font-size:16.5px; font-weight:700}
+  .card h3 a{text-decoration:none}
+  .card h3 a:hover{color:var(--amber)}
+  .card p{margin:0; color:var(--muted); font-size:13.5px; flex:1}
+  .card .glyphs{color:var(--faint); font-size:12px; letter-spacing:0.3em; user-select:none}
+  .card .foot{display:flex; gap:14px; align-items:center; margin-top:6px; font-size:13px}
+  .view{
+    color:var(--amber); text-decoration:none; font-weight:700;
+    border:1px solid var(--line); border-radius:8px; padding:5px 12px; background:var(--panel2);
+  }
+  .view:hover{border-color:var(--amber)}
+  .code{color:var(--muted); text-decoration:none}
+  .code:hover{color:var(--ink); text-decoration:underline}
+
+  footer{margin-top:56px; border-top:1px solid var(--line); padding-top:22px; color:var(--faint); font-size:13px}
+  footer .bench{color:var(--muted)}
+  footer a{color:var(--muted)}
+  footer a:hover{color:var(--amber)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <pre class="banner" aria-hidden="true">        <span class="w">~  ~   ~</span>        <span class="l">\|/  \|/</span>
+   <span class="w">~</span>     <span class="k">&gt;&lt;</span>      <span class="w">~</span>    <span class="l">--*--</span>
+      <span class="w">~   ~</span>  <span class="k">&gt;&lt;</span>      <span class="l">/|\  /|\</span>   <span class="w">~</span></pre>
+    <h1>ASCII Visual Projects<span class="dot">.</span></h1>
+    <p class="lede">Living pictures made of characters. Ponds, flocks, weather, attractors, and slow art that runs on real clocks and calendars. Every piece is a single HTML file in vanilla JavaScript, no libraries, no build step. Click one and it runs.</p>
+    <p class="meta"><b>16</b> pieces &nbsp;·&nbsp; <b>4</b> collections &nbsp;·&nbsp; <b>1</b> reusable engine</p>
+    <pre id="wave" aria-hidden="true"></pre>
+    <nav class="toc" aria-label="Collections">
+      <a href="#emergent">Emergent systems</a>
+      <a href="#math">Math made visible</a>
+      <a href="#ambient">Ambient &amp; slow art</a>
+      <a href="#toys">Ponds, portraits &amp; toys</a>
+      <a href="#tools">Toolbox</a>
+    </nav>
+  </header>
+
+  <section id="emergent">
+    <div class="sec-head"><h2 class="acc-emergent">Emergent systems</h2><span class="rule"></span><span class="count">2 pieces</span></div>
+    <p class="sec-sub">Patterns nobody drew. They grow out of simple rules.</p>
+    <div class="grid">
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">.:-=+*#%@</div>
+        <h3><a href="reaction-diffusion-garden.html">Reaction-Diffusion Garden</a></h3>
+        <p>Gray-Scott chemistry blooming into coral, spots, and mazes. Click to seed it and watch it grow.</p>
+        <div class="foot"><a class="view" href="reaction-diffusion-garden.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/reaction-diffusion-garden.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">&gt; ^ ⌒ &lt; v</div>
+        <h3><a href="murmuration.html">Murmuration</a></h3>
+        <p>Two hundred starlings as glyphs over a dusk sky, flocking by three simple rules. Click for a hawk scare.</p>
+        <div class="foot"><a class="view" href="murmuration.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/murmuration.html">Code</a></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="math">
+    <div class="sec-head"><h2 class="acc-math">Math made visible</h2><span class="rule"></span><span class="count">3 pieces</span></div>
+    <p class="sec-sub">Equations you can look at.</p>
+    <div class="grid">
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">/ \ _ ^ #</div>
+        <h3><a href="ascii-terrain-flyover.html">ASCII Terrain Flyover</a></h3>
+        <p>Endless noise mountains in real perspective, shaded by height and slope, lakes in the valleys, plus a topographic contour mode.</p>
+        <div class="foot"><a class="view" href="ascii-terrain-flyover.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii-terrain-flyover.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">~ ≈ · * @</div>
+        <h3><a href="wave-interference-table.html">Wave Interference Table</a></h3>
+        <p>Draggable ripple sources on dark water: crests, troughs, and the quiet threads where waves cancel each other.</p>
+        <div class="foot"><a class="view" href="wave-interference-table.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/wave-interference-table.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">✦ * + # ✦</div>
+        <h3><a href="kaleidoscope-loom.html">Kaleidoscope Loom</a></h3>
+        <p>Noise folded through mirror symmetry into living mandalas. The symmetry centre follows your hand, a beat behind.</p>
+        <div class="foot"><a class="view" href="kaleidoscope-loom.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/kaleidoscope-loom.html">Code</a></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="ambient">
+    <div class="sec-head"><h2 class="acc-ambient">Ambient &amp; slow art</h2><span class="rule"></span><span class="count">5 pieces</span></div>
+    <p class="sec-sub">Pieces that run on real time: clocks, weather, seasons.</p>
+    <div class="grid">
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">· : ; + * #</div>
+        <h3><a href="ascii-aurora.html">ASCII Aurora</a></h3>
+        <p>Northern-light curtains with fine vertical rays over a twinkling starfield and a dark treeline. Storm slider included.</p>
+        <div class="foot"><a class="view" href="ascii-aurora.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii-aurora.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">| / \ * %</div>
+        <h3><a href="seasonal-tree.html">Seasonal Tree</a></h3>
+        <p>One seeded tree living by the real calendar: buds, canopy, mottled autumn fall, snowy bare branches. Scrub the year.</p>
+        <div class="foot"><a class="view" href="seasonal-tree.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/seasonal-tree.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">░ o O ' ·</div>
+        <h3><a href="rain-on-glass.html">Rain on Glass</a></h3>
+        <p>A fogged window in the rain. Drops gather, run down wiggly trails, and wipe the view clear before it mists over again.</p>
+        <div class="foot"><a class="view" href="rain-on-glass.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/rain-on-glass.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">▓ ▒ ░ · :</div>
+        <h3><a href="life_clock.html">Life Clock</a></h3>
+        <p>The current time stamped into a running Game of Life, fraying and regrowing every minute. A screensaver clock.</p>
+        <div class="foot"><a class="view" href="life_clock.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/life_clock.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">~ ' * &gt;&lt;</div>
+        <h3><a href="weather_pond.html">Weather Pond</a></h3>
+        <p>A koi pond that reads LaBelle, Quebec's real weather: rain, snow, thunder, and wind all change how the pond behaves.</p>
+        <div class="foot"><a class="view" href="weather_pond.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/weather_pond.html">Code</a></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="toys">
+    <div class="sec-head"><h2 class="acc-toys">Ponds, portraits &amp; toys</h2><span class="rule"></span><span class="count">6 pieces</span></div>
+    <p class="sec-sub">The ones that started it, plus the playful ones.</p>
+    <div class="grid">
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">~ &gt;&lt; o ~</div>
+        <h3><a href="ascii_koi_pond.html">ASCII Koi Pond</a></h3>
+        <p>The original pond: patterned koi on sine-wave spines, click ripples, scattered petals.</p>
+        <div class="foot"><a class="view" href="ascii_koi_pond.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii_koi_pond.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">✿ ~ &gt;&lt; ~</div>
+        <h3><a href="interactive_ascii_botanical_koi_portfolio.html">Botanical Koi Portfolio</a></h3>
+        <p>The landing page that kicked the series off: a botanical pond hero with a full vibe studio for palettes, glyphs, and koi.</p>
+        <div class="foot"><a class="view" href="interactive_ascii_botanical_koi_portfolio.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/interactive_ascii_botanical_koi_portfolio.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">· ● ● · ●</div>
+        <h3><a href="cozy_game_of_life.html">Cozy Game of Life</a></h3>
+        <p>A warm little Life universe. Plant seeds by drawing, pick a hearth-side palette, and let gliders roam a wrap-around world.</p>
+        <div class="foot"><a class="view" href="cozy_game_of_life.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/cozy_game_of_life.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">( ~ ≈ o )</div>
+        <h3><a href="ocean-in-a-bottle.html">Ocean in a Bottle</a></h3>
+        <p>Spring-physics seawater sloshing in a character-drawn bottle. Tilt it, shake it, watch the droplets fly.</p>
+        <div class="foot"><a class="view" href="ocean-in-a-bottle.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ocean-in-a-bottle.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">. : - = + # @</div>
+        <h3><a href="ascii_photo_booth.html">ASCII Photo Booth</a></h3>
+        <p>Drop in a photo, get ASCII back: three ramps, colour, palette, and mono modes, copy-as-text and PNG export. Works on cats.</p>
+        <div class="foot"><a class="view" href="ascii_photo_booth.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii_photo_booth.html">Code</a></div>
+      </article>
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">.,-~:;=!*#$@</div>
+        <h3><a href="ascii_spinner.html">ASCII Spinner</a></h3>
+        <p>donut.c-style real-time 3D in text: torus, cube, and sphere with z-buffer shading. Drag to orbit; it keeps its momentum.</p>
+        <div class="foot"><a class="view" href="ascii_spinner.html">View →</a><a class="code" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii_spinner.html">Code</a></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="tools">
+    <div class="sec-head"><h2 class="acc-tools">Toolbox</h2><span class="rule"></span><span class="count">1 file</span></div>
+    <div class="grid">
+      <article class="card">
+        <div class="glyphs" aria-hidden="true">{ ; }</div>
+        <h3><a href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii_rendering_engine.js">ASCII Rendering Engine</a></h3>
+        <p>The reusable drop-in the pond grew into: a stamp-grid renderer plus an image sampler with luminance ramps and copyable text output.</p>
+        <div class="foot"><a class="view" href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS/blob/main/ascii_rendering_engine.js">View code →</a><a class="code" href="ascii_rendering_engine.js">Raw file</a></div>
+      </article>
+    </div>
+  </section>
+
+  <footer>
+    <p class="bench">On the bench (spec'd, not yet built): Falling-Sand Zen Box · Strange Attractor Portrait · Tide Clock · Fireflies over the Marsh · Glyph Painter.</p>
+    <p>Single-file HTML + vanilla JavaScript. No trackers, no accounts; the only network call in the collection is Weather Pond's keyless Open-Meteo fetch. Source on <a href="https://github.com/dalecri/ASCII-VISUAL-PROJECTS">GitHub</a>.</p>
+  </footer>
+
+</div>
+
+<script>
+  // A one-line pond ripple under the header. Decorative only.
+  (function () {
+    var el = document.getElementById('wave');
+    var W = 72, chars = ' .~≈~. ', t = 0;
+    function frame() {
+      var s = '';
+      for (var x = 0; x < W; x++) {
+        var v = Math.sin(x * 0.32 + t) + Math.sin(x * 0.11 - t * 0.7) + Math.sin(x * 0.53 + t * 1.7) * 0.5;
+        var i = Math.max(0, Math.min(chars.length - 1, Math.floor((v + 2.5) / 5 * chars.length)));
+        s += chars[i];
+      }
+      el.textContent = s;
+      t += 0.045;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      frame();
+    } else {
+      frame();
+      setInterval(function () { if (!document.hidden) frame(); }, 90);
+    }
+  })();
+</script>
+</body>
+</html>
