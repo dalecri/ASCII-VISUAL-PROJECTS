@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reaction-Diffusion Garden</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #140F1D;
+    font-family: "Space Mono", "Courier New", Courier, monospace;
+    color: #F7EAD9;
+    height: 100%;
+  }
+  #canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #140F1D;
+    cursor: crosshair;
+  }
+  #controls {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 15, 29, 0.82);
+    border-radius: 14px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 96vw;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    z-index: 10;
+    backdrop-filter: blur(4px);
+  }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    background: #E8873A;
+    color: #140F1D;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: filter 0.15s;
+  }
+  button:hover { filter: brightness(1.15); }
+  button:active { filter: brightness(0.95); }
+  button.preset {
+    background: transparent;
+    color: #F7EAD9;
+    border: 1px solid rgba(232, 135, 58, 0.45);
+    font-weight: 500;
+  }
+  button.preset.active {
+    background: #E8873A;
+    color: #140F1D;
+    border-color: #E8873A;
+  }
+  #readout {
+    font-size: 12px;
+    opacity: 0.9;
+    white-space: nowrap;
+    padding: 0 6px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* handled in JS */
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="controls">
+  <button class="preset" data-preset="0">Coral</button>
+  <button class="preset" data-preset="1">Mitosis</button>
+  <button class="preset" data-preset="2">Leopard Spots</button>
+  <button class="preset" data-preset="3">Maze</button>
+  <button class="preset" data-preset="4">Slow Waves</button>
+  <button id="reseed">Reseed</button>
+  <button id="clear">Clear</button>
+  <button id="pause">Pause</button>
+  <span id="readout">Coral &nbsp; f:0.0545 &nbsp; k:0.062</span>
+</div>
+
+<script>
+(() => {
+  const W = 256;
+  const H = 144;
+  const Du = 1.0;
+  const Dv = 0.5;
+  const dt = 1.0;
+  const STEPS_PER_FRAME = 10;
+  const LOW_V = 0.05;
+  const RAMP = " .:-=+*#%@";
+
+  const presets = [
+    { name: "Coral", feed: 0.0545, kill: 0.062 },
+    { name: "Mitosis", feed: 0.0367, kill: 0.0649 },
+    { name: "Leopard Spots", feed: 0.0300, kill: 0.0600 },
+    { name: "Maze", feed: 0.0290, kill: 0.0570 },
+    { name: "Slow Waves", feed: 0.0140, kill: 0.0450 }
+  ];
+
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const readout = document.getElementById("readout");
+  const pauseBtn = document.getElementById("pause");
+  const presetBtns = document.querySelectorAll("button.preset");
+
+  const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let U = new Float32Array(W * H);
+  let V = new Float32Array(W * H);
+  let nextU = new Float32Array(W * H);
+  let nextV = new Float32Array(W * H);
+
+  let feed = presets[0].feed;
+  let kill = presets[0].kill;
+  let currentName = presets[0].name;
+  let paused = prefersReduced;
+  let painting = false;
+  let cellW = 1, cellH = 1;
+  let fontSize = 12;
+
+  const colorStops = [0, 0.25, 0.5, 0.75, 1.0];
+  const colorVals = [
+    [42, 30, 63],     // #2A1E3F
+    [123, 75, 148],   // #7B4B94
+    [232, 92, 138],   // #E85C8A
+    [242, 201, 76],   // #F2C94C
+    [247, 234, 217]   // #F7EAD9
+  ];
+
+  function lerpColor(v) {
+    v = Math.max(0, Math.min(1, v));
+    let i = 0;
+    while (i < colorStops.length - 2 && v > colorStops[i + 1]) i++;
+    const t0 = colorStops[i], t1 = colorStops[i + 1];
+    const t = t1 === t0 ? 0 : (v - t0) / (t1 - t0);
+    const c0 = colorVals[i], c1 = colorVals[i + 1];
+    const r = Math.round(c0[0] + (c1[0] - c0[0]) * t);
+    const g = Math.round(c0[1] + (c1[1] - c0[1]) * t);
+    const b = Math.round(c0[2] + (c1[2] - c0[2]) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function clampIndex(x, y) {
+    const nx = x < 0 ? 0 : x >= W ? W - 1 : x;
+    const ny = y < 0 ? 0 : y >= H ? H - 1 : y;
+    return ny * W + nx;
+  }
+
+  function step() {
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const u = U[i];
+        const v = V[i];
+
+        let lapU = -u;
+        let lapV = -v;
+
+        // Orthogonal (weight 0.2)
+        lapU += 0.2 * U[clampIndex(x - 1, y)];
+        lapU += 0.2 * U[clampIndex(x + 1, y)];
+        lapU += 0.2 * U[clampIndex(x, y - 1)];
+        lapU += 0.2 * U[clampIndex(x, y + 1)];
+        lapV += 0.2 * V[clampIndex(x - 1, y)];
+        lapV += 0.2 * V[clampIndex(x + 1, y)];
+        lapV += 0.2 * V[clampIndex(x, y - 1)];
+        lapV += 0.2 * V[clampIndex(x, y + 1)];
+
+        // Diagonals (weight 0.05)
+        lapU += 0.05 * U[clampIndex(x - 1, y - 1)];
+        lapU += 0.05 * U[clampIndex(x + 1, y - 1)];
+        lapU += 0.05 * U[clampIndex(x - 1, y + 1)];
+        lapU += 0.05 * U[clampIndex(x + 1, y + 1)];
+        lapV += 0.05 * V[clampIndex(x - 1, y - 1)];
+        lapV += 0.05 * V[clampIndex(x + 1, y - 1)];
+        lapV += 0.05 * V[clampIndex(x - 1, y + 1)];
+        lapV += 0.05 * V[clampIndex(x + 1, y + 1)];
+
+        const uvv = u * v * v;
+        let nu = u + (Du * lapU - uvv + feed * (1 - u)) * dt;
+        let nv = v + (Dv * lapV + uvv - (feed + kill) * v) * dt;
+        nu = nu < 0 ? 0 : nu > 1 ? 1 : nu;
+        nv = nv < 0 ? 0 : nv > 1 ? 1 : nv;
+        nextU[i] = nu;
+        nextV[i] = nv;
+      }
+    }
+    // Swap
+    const tU = U; U = nextU; nextU = tU;
+    const tV = V; V = nextV; nextV = tV;
+  }
+
+  function seedBlobs(count = 12) {
+    U.fill(1);
+    V.fill(0);
+    for (let b = 0; b < count; b++) {
+      const cx = Math.random() * (W - 1);
+      const cy = Math.random() * (H - 1);
+      const r = 4 + Math.random() * 5; // 4 to 9
+      const r2 = r * r;
+      const minX = Math.max(0, Math.floor(cx - r));
+      const maxX = Math.min(W - 1, Math.ceil(cx + r));
+      const minY = Math.max(0, Math.floor(cy - r));
+      const maxY = Math.min(H - 1, Math.ceil(cy + r));
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const dx = x - cx, dy = y - cy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < r2) {
+            const i = y * W + x;
+            const fall = 1 - Math.sqrt(d2) / r;
+            V[i] = Math.max(V[i], 0.9 * fall);
+            U[i] = Math.min(U[i], 0.5 + 0.5 * (1 - fall));
+          }
+        }
+      }
+    }
+  }
+
+  function clearGrids() {
+    U.fill(1);
+    V.fill(0);
+  }
+
+  function paintAt(sx, sy) {
+    const r = 6;
+    const r2 = r * r;
+    const minX = Math.max(0, Math.floor(sx - r));
+    const maxX = Math.min(W - 1, Math.ceil(sx + r));
+    const minY = Math.max(0, Math.floor(sy - r));
+    const maxY = Math.min(H - 1, Math.ceil(sy + r));
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - sx, dy = y - sy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < r2) {
+          const i = y * W + x;
+          const fall = 1 - Math.sqrt(d2) / r;
+          V[i] = Math.max(V[i], 0.9 * fall);
+          U[i] = Math.min(U[i], 0.45);
+        }
+      }
+    }
+  }
+
+  function updateReadout() {
+    readout.textContent = `${currentName}   f:${feed.toFixed(4)}   k:${kill.toFixed(4)}`;
+  }
+
+  function setActivePreset(idx) {
+    presetBtns.forEach((btn, i) => {
+      btn.classList.toggle("active", i === idx);
+    });
+  }
+
+  function applyPreset(idx, doSeed = true) {
+    const p = presets[idx];
+    feed = p.feed;
+    kill = p.kill;
+    currentName = p.name;
+    updateReadout();
+    setActivePreset(idx);
+    if (doSeed) {
+      seedBlobs();
+      if (prefersReduced) {
+        for (let i = 0; i < 300; i++) step();
+      }
+    }
+    render();
+  }
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cellW = canvas.width / W;
+    cellH = canvas.height / H;
+    fontSize = Math.max(8, Math.min(cellW, cellH) * 0.92);
+    ctx.font = `${fontSize}px "Space Mono", "Courier New", monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    render();
+  }
+
+  function render() {
+    ctx.fillStyle = "#140F1D";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const halfW = cellW * 0.5;
+    const halfH = cellH * 0.5;
+    for (let y = 0; y < H; y++) {
+      const py = y * cellH + halfH;
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const v = V[i];
+        if (v < LOW_V) continue;
+        const idx = Math.min(RAMP.length - 1, Math.floor(v * RAMP.length));
+        const ch = RAMP[idx];
+        ctx.fillStyle = lerpColor(v);
+        ctx.fillText(ch, x * cellW + halfW, py);
+      }
+    }
+  }
+
+  let rafId = 0;
+  function loop() {
+    if (!prefersReduced && !paused && !document.hidden) {
+      for (let s = 0; s < STEPS_PER_FRAME; s++) step();
+      render();
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function togglePause() {
+    if (prefersReduced) return;
+    paused = !paused;
+    pauseBtn.textContent = paused ? "Resume" : "Pause";
+  }
+
+  // Events
+  window.addEventListener("resize", resize);
+
+  document.addEventListener("visibilitychange", () => {
+    // loop already checks document.hidden
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      e.preventDefault();
+      togglePause();
+    }
+  });
+
+  presetBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.preset, 10);
+      applyPreset(idx, true);
+    });
+  });
+
+  document.getElementById("reseed").addEventListener("click", () => {
+    seedBlobs();
+    if (prefersReduced) {
+      for (let i = 0; i < 300; i++) step();
+    }
+    render();
+  });
+
+  document.getElementById("clear").addEventListener("click", () => {
+    clearGrids();
+    render();
+  });
+
+  pauseBtn.addEventListener("click", togglePause);
+
+  function getSimPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * W;
+    const my = (e.clientY - rect.top) / rect.height * H;
+    return { x: mx, y: my };
+  }
+
+  canvas.addEventListener("mousedown", (e) => {
+    painting = true;
+    const p = getSimPos(e);
+    paintAt(p.x, p.y);
+    render();
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!painting) return;
+    const p = getSimPos(e);
+    paintAt(p.x, p.y);
+    render();
+  });
+
+  window.addEventListener("mouseup", () => { painting = false; });
+
+  // Touch support
+  canvas.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    painting = true;
+    const t = e.touches[0];
+    const p = getSimPos(t);
+    paintAt(p.x, p.y);
+    render();
+  }, { passive: false });
+
+  window.addEventListener("touchmove", (e) => {
+    if (!painting) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const p = getSimPos(t);
+    paintAt(p.x, p.y);
+    render();
+  }, { passive: false });
+
+  window.addEventListener("touchend", () => { painting = false; });
+
+  // Init
+  resize();
+  applyPreset(0, true);
+  if (!prefersReduced) {
+    rafId = requestAnimationFrame(loop);
+  }
+  if (prefersReduced) {
+    pauseBtn.textContent = "Paused";
+    pauseBtn.disabled = true;
+    pauseBtn.style.opacity = "0.5";
+  }
+})();
+</script>
+</body>
+</html>
