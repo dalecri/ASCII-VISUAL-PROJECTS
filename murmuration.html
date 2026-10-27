@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#241A38"><title>Murmuration</title>
+<style>
+:root{color-scheme:dark;--accent:#e8873a;--ink:#efe2e8;--muted:#c1a9bd;font-family:'Space Mono',ui-monospace,SFMono-Regular,Consolas,monospace}*{box-sizing:border-box}body{margin:0;overflow:hidden;background:#241a38;color:var(--ink)}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}header{position:fixed;left:30px;top:28px;pointer-events:none}h1{font-size:13px;font-weight:400;letter-spacing:.2em;text-transform:uppercase;margin:0 0 9px}header p{margin:0;font-size:9px;letter-spacing:.08em;color:var(--muted)}.edition{position:fixed;right:30px;top:30px;color:var(--muted);font-size:9px;pointer-events:none}.bar{position:fixed;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:22px;width:max-content;max-width:calc(100% - 28px);padding:13px 18px;border:1px solid #ffffff20;border-radius:18px;background:#241a38d9;backdrop-filter:blur(20px);box-shadow:0 14px 45px #140d202a}.field{display:grid;gap:8px}.label{display:flex;justify-content:space-between;gap:20px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}output{color:var(--accent);font-variant-numeric:tabular-nums}input{width:155px;height:18px;margin:0;accent-color:var(--accent);cursor:pointer}select,button{font:inherit;font-size:11px;min-height:36px;padding:0 12px;border:1px solid #ffffff20;border-radius:7px;background:#ffffff05;color:var(--ink);cursor:pointer}select{color:var(--accent);min-width:112px}button:hover,select:hover{border-color:#e8873a80;background:#e8873a0c}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:4px}button:disabled{opacity:.45;cursor:default}.status{border-left:1px solid #ffffff20;padding-left:18px;font-size:9px;line-height:1.8;color:var(--muted);min-width:133px}.status strong{font-weight:400;color:var(--ink)}.dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:7px}@media(max-width:650px){.bar{gap:14px}.status{display:none}header{left:20px;top:22px}.edition{right:20px;top:24px}input{width:125px}}@media(max-width:420px){.bar{width:calc(100% - 24px);padding:12px;gap:12px}.field{flex:1;min-width:0}input{width:100%}select{min-width:0;width:100%;padding:0 7px}.edition{display:none}h1{font-size:11px}header p{font-size:8px}button{padding:0 10px}}
+</style></head>
+<body>
+<canvas id="sky" role="img" aria-label="An emergent flock of ASCII starlings in a dusk sky. Tap the sky to scatter nearby birds."></canvas>
+<header><h1>Murmuration</h1><p>NO LEADER. ONE MOVEMENT.</p></header><span class="edition">FLOCK STUDY / 006</span>
+<div class="bar" role="region" aria-label="Flock controls">
+<label class="field"><span class="label">Birds <output id="count" for="birds">220</output></span><input id="birds" type="range" min="60" max="400" step="1" value="220"></label>
+<label class="field"><span class="label">Mood</span><select id="mood"><option>Ribbon</option><option>Swirl</option><option>Scatter</option></select></label>
+<button id="pause" aria-pressed="false" aria-keyshortcuts="Space">Pause</button>
+<div class="status"><strong><i class="dot" aria-hidden="true"></i><span id="state">In flight</span></strong><br><span id="hint">Tap the sky to scatter</span></div>
+</div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),canvas=$('sky'),ctx=canvas.getContext('2d',{alpha:false}),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+const TAU=Math.PI*2,SENSE=60,SEPARATE=25,MIN_SPEED=1.2,MAX_SPEED=3.2,STEER=.055,STEP=1000/60;
+const moods={Ribbon:{separation:1.55,alignment:1.8,cohesion:.88,wind:.005},Swirl:{separation:1.0,alignment:1.05,cohesion:1.7,wind:.017},Scatter:{separation:2.8,alignment:.65,cohesion:.3,wind:.008}};
+let width=0,height=0,flock=[],forces=[],paused=false,raf=0,lastTime=null,accumulator=0,ticks=0,windAngle=.2,scare=null,backdrop=null;
+let seed=52631;function random(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;}
+function hash(n){n=Math.imul(n^0x6a09e667,1274126177);return ((n^(n>>>16))>>>0)/4294967295;}
+function smoothNoise(t){const i=Math.floor(t),f=t-i,u=f*f*(3-2*f);return hash(i)*(1-u)+hash(i+1)*u;}
+function limit(x,y,max){const length=Math.hypot(x,y);return length>max?[x/length*max,y/length*max]:[x,y];}
+function steer(x,y,b){const length=Math.hypot(x,y);if(length<1e-8)return [0,0];return limit(x/length*MAX_SPEED-b.vx,y/length*MAX_SPEED-b.vy,STEER);}
+function newBird(){const spread=random()-.5;const x=width*(.5+spread*.58),y=height*(.39+spread*.12+(random()-.5)*.13),angle=-.15+(random()-.5)*.65,speed=1.5+random()*1.2;return {x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,phase:random()*TAU,beat:.15+random()*.07,depth:random(),trail:[{x,y},{x,y},{x,y}]};}
+function setCount(count){while(flock.length<count)flock.push(newBird());flock.length=count;forces=Array.from({length:count},()=>[0,0]);$('count').textContent=count;}
+function step(){ticks++;const weights=moods[$('mood').value],grid=new Map();for(let i=0;i<flock.length;i++){const b=flock[i],key=Math.floor(b.x/SENSE)+','+Math.floor(b.y/SENSE);if(!grid.has(key))grid.set(key,[]);grid.get(key).push(i);}
+// One common, slowly wandering wind; no paths, targets or choreographed shapes.
+const target=(smoothNoise(ticks/1800)-.5)*TAU*2;windAngle+=Math.atan2(Math.sin(target-windAngle),Math.cos(target-windAngle))*.002;
+for(let i=0;i<flock.length;i++){const b=flock[i],gx=Math.floor(b.x/SENSE),gy=Math.floor(b.y/SENSE);let sx=0,sy=0,ax=0,ay=0,cx=0,cy=0,n=0,close=0;
+for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const nearby=grid.get((gx+xx)+','+(gy+yy));if(!nearby)continue;for(const j of nearby){if(j===i)continue;const other=flock[j],dx=b.x-other.x,dy=b.y-other.y,d2=dx*dx+dy*dy;if(d2>=SENSE*SENSE)continue;n++;ax+=other.vx;ay+=other.vy;cx+=other.x;cy+=other.y;if(d2<SEPARATE*SEPARATE){if(d2<1e-8){const a=(i-j)*2.39996;sx+=Math.cos(a);sy+=Math.sin(a);}else{sx+=dx/d2;sy+=dy/d2;}close++;}}}
+let fx=Math.cos(windAngle)*weights.wind,fy=Math.sin(windAngle)*weights.wind;
+if(close){const s=steer(sx/close,sy/close,b);fx+=s[0]*weights.separation;fy+=s[1]*weights.separation;}
+if(n){const a=steer(ax/n,ay/n,b),c=steer(cx/n-b.x,cy/n-b.y,b);fx+=a[0]*weights.alignment+c[0]*weights.cohesion;fy+=a[1]*weights.alignment+c[1]*weights.cohesion;}
+// Soft margins bend velocities inward. No wrapping, clamping or bouncing.
+const marginX=Math.min(90,width*.23),marginY=Math.min(90,height*.2),bottom=height-48;
+if(b.x<marginX)fx+=.55*Math.pow((marginX-b.x)/marginX,2);if(b.x>width-marginX)fx-=.55*Math.pow((b.x-width+marginX)/marginX,2);
+if(b.y<marginY)fy+=.55*Math.pow((marginY-b.y)/marginY,2);if(b.y>bottom-marginY)fy-=.55*Math.pow((b.y-bottom+marginY)/marginY,2);
+if(scare){const dx=b.x-scare.x,dy=b.y-scare.y,d=Math.hypot(dx,dy);if(d<160){const intensity=.52*(1-d/160)*(scare.life/75),a=d<.01?i*2.39996:Math.atan2(dy,dx);fx+=Math.cos(a)*intensity;fy+=Math.sin(a)*intensity;}}
+forces[i]=limit(fx,fy,scare?.36:.24);}
+// Apply forces only after every bird has sensed the same snapshot.
+for(let i=0;i<flock.length;i++){const b=flock[i];b.trail[2]=b.trail[1];b.trail[1]=b.trail[0];b.trail[0]={x:b.x,y:b.y};b.vx+=forces[i][0];b.vy+=forces[i][1];const speed=Math.hypot(b.vx,b.vy)||1,clamped=Math.max(MIN_SPEED,Math.min(MAX_SPEED,speed));b.vx=b.vx/speed*clamped;b.vy=b.vy/speed*clamped;b.x+=b.vx;b.y+=b.vy;b.phase=(b.phase+b.beat)%TAU;}
+if(scare&&--scare.life<=0)scare=null;}
+function heading(b){const angle=Math.atan2(b.vy,b.vx),sector=(Math.round(angle/(Math.PI/4))+8)%8;if((sector===2||sector===6)&&Math.abs(b.vx)<Math.abs(b.vy)*.18)return '|';return ['>','\\','v','/','<','\\','^','/'][sector];}
+function buildBackdrop(){backdrop=document.createElement('canvas');backdrop.width=Math.ceil(width);backdrop.height=Math.ceil(height);const bg=backdrop.getContext('2d');const gradient=bg.createLinearGradient(0,0,0,height);gradient.addColorStop(0,'#241A38');gradient.addColorStop(.52,'#6E4468');gradient.addColorStop(.89,'#C17868');gradient.addColorStop(1,'#E8873A');bg.fillStyle=gradient;bg.fillRect(0,0,width,height);bg.font='14px "Space Mono", ui-monospace, monospace';bg.textAlign='center';bg.textBaseline='middle';bg.fillStyle='#17121F';for(let x=5,i=0;x<width;x+=10,i++){const g=hash(i+532);bg.fillText(g>.45?'#':'^',x,height-8);if(g>.6)bg.fillText('^',x,height-23);}
+// One fixed bare tree, composed only of type.
+const tx=width*.86,ground=height-20;const lines=['     |     ','  \\  |  /  ','   \\ | /   ',' \\  \\|/  / ','  \\  |  /  ','   \\ | /   ','    \\|/    ','     |     ','     |     '];for(let r=0;r<lines.length;r++)for(let col=0;col<lines[r].length;col++){const char=lines[r][col];if(char!==' ')bg.fillText(char,tx+(col-5)*9,ground-(lines.length-1-r)*13);}}
+function draw(){ctx.globalAlpha=1;ctx.drawImage(backdrop,0,0,width,height);ctx.textAlign='center';ctx.textBaseline='middle';for(const b of flock){const glyph=heading(b);ctx.font=(b.depth>.65?'bold 14px':'12px')+' "Space Mono", ui-monospace, monospace';ctx.fillStyle=b.depth>.65?'#3A2B4A':'#1B1426';for(let j=2;j>=0;j--){ctx.globalAlpha=[.25,.15,.07][j];ctx.fillText(glyph,b.trail[j].x,b.trail[j].y);}ctx.globalAlpha=1;ctx.fillText(Math.sin(b.phase)>.1?'⌒':glyph,b.x,b.y);}}
+function active(){return !paused&&!document.hidden&&!reduced.matches;}
+function schedule(){if(active()&&!raf)raf=requestAnimationFrame(frame);}
+function frame(now){raf=0;if(!active()){lastTime=null;return;}if(lastTime!==null)accumulator+=Math.min(5*STEP,now-lastTime);lastTime=now;while(accumulator>=STEP){step();accumulator-=STEP;}draw();schedule();}
+function status(){$('pause').textContent=paused?'Resume':'Pause';$('pause').setAttribute('aria-pressed',String(paused));$('pause').disabled=reduced.matches;$('state').textContent=reduced.matches?'A still flock':paused?'Paused':document.hidden?'Tab hidden':'In flight';$('hint').textContent=reduced.matches?'Reduced motion enabled':paused?'Space to resume':'Tap the sky to scatter';}
+function sync(){cancelAnimationFrame(raf);raf=0;lastTime=null;accumulator=0;status();schedule();}
+function still(){// Simulate privately, then show just one settled frame.
+scare=null;for(let i=0;i<240;i++)step();draw();}
+function resize(){const oldW=width,oldH=height;width=innerWidth;height=innerHeight;const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);if(oldW&&oldH)for(const b of flock){b.x*=width/oldW;b.y*=height/oldH;for(const p of b.trail){p.x*=width/oldW;p.y*=height/oldH;}}buildBackdrop();if(!flock.length)setCount(Number($('birds').value));draw();}
+$('birds').addEventListener('input',e=>{setCount(Number(e.target.value));if(reduced.matches)still();else draw();});$('mood').addEventListener('change',()=>{if(reduced.matches)still();});
+function togglePause(){if(reduced.matches)return;paused=!paused;sync();}
+$('pause').addEventListener('click',togglePause);document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(e.target.tagName)){e.preventDefault();togglePause();}});
+canvas.addEventListener('pointerdown',e=>{if(!active()||!e.isPrimary||(e.pointerType==='mouse'&&e.button!==0))return;const rect=canvas.getBoundingClientRect();scare={x:e.clientX-rect.left,y:e.clientY-rect.top,life:75};});
+document.addEventListener('visibilitychange',sync);window.addEventListener('resize',resize);reduced.addEventListener('change',()=>{sync();if(reduced.matches)still();});
+resize();if(reduced.matches)still();sync();
+</script></body></html>
