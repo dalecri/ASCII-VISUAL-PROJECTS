@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">`
+    <title>Game of Life</title>
+    <style>
+        :root {
+            --bg-night: #1E1826;
+            --board-bg: #17121E;
+            --board-border: #2B2336;
+            --cell-dead: #251E30;
+            --ui-bg: #272033;
+            --ui-bg-alpha: rgba(39, 32, 51, 0.94);
+            --ui-border: #382E47;
+            --ui-hover: #352B45;
+            --ui-active: #433757;
+            --text-main: #E6DEC8;
+            --text-muted: #7E738F;
+            --accent-amber: #F5D799;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-night);
+            color: var(--text-main);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            height: 100vh;
+            height: 100dvh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px;
+            gap: 16px;
+            transition: background-color 0.4s ease, color 0.3s ease;
+        }
+
+        #canvas-wrapper {
+            flex: 1;
+            width: 100%;
+            max-width: 1400px;
+            background-color: var(--board-bg);
+            border: 2px solid var(--board-border);
+            border-radius: 20px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), inset 0 2px 8px rgba(0, 0, 0, 0.25);
+            position: relative;
+            overflow: hidden;
+            transition: background-color 0.4s ease, border-color 0.4s ease;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+            touch-action: none;
+            border-radius: 10px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background-color: var(--ui-bg);
+            border: 1px solid var(--ui-border);
+            padding: 6px 8px;
+            border-radius: 16px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+            transition: background-color 0.4s ease, border-color 0.4s ease;
+        }
+
+        button {
+            appearance: none;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 13px;
+            letter-spacing: 0.03em;
+            padding: 7px 14px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease, opacity 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: var(--ui-hover);
+        }
+
+        button:active:not(:disabled) {
+            background-color: var(--ui-active);
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            color: var(--text-muted);
+            cursor: default;
+            opacity: 0.45;
+        }
+
+        button.primary {
+            background-color: var(--ui-hover);
+            border-color: var(--ui-border);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: var(--text-muted);
+            transition: background-color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .status-dot.active {
+            background-color: var(--accent-amber);
+            box-shadow: 0 0 8px var(--accent-amber);
+        }
+
+        .divider {
+            width: 1px;
+            height: 16px;
+            background-color: var(--ui-border);
+            margin: 0 2px;
+        }
+
+        /* Floating Modules (Info & Environment Settings) */
+        .info-module {
+            position: absolute;
+            bottom: 76px;
+            background-color: var(--ui-bg-alpha);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--ui-border);
+            border-radius: 18px;
+            padding: 18px 20px;
+            width: calc(100% - 40px);
+            max-width: 390px;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+            z-index: 20;
+            color: var(--text-main);
+            font-size: 12.5px;
+            line-height: 1.55;
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease, background-color 0.4s ease, border-color 0.4s ease;
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            visibility: visible;
+        }
+
+        .info-module.hidden {
+            opacity: 0;
+            transform: translateY(10px) scale(0.98);
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--ui-border);
+        }
+
+        .info-title {
+            font-weight: 600;
+            color: var(--accent-amber);
+            letter-spacing: 0.04em;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-close {
+            padding: 2px 7px;
+            font-size: 12px;
+            border-radius: 6px;
+            color: var(--text-muted);
+        }
+
+        .info-close:hover {
+            color: var(--text-main);
+        }
+
+        .info-section + .info-section {
+            margin-top: 12px;
+        }
+
+        .info-label {
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 5px;
+        }
+
+        .rule-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .rule-item {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .mini-cell {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            flex-shrink: 0;
+            transform: translateY(-1px);
+        }
+
+        .mini-cell.amber { background-color: #F5D799; }
+        .mini-cell.pink { background-color: #E5A8B2; }
+        .mini-cell.sage { background-color: #A8CCB3; }
+        .mini-cell.dead { background-color: var(--cell-dead); border: 1px solid var(--ui-border); }
+
+        button.active-toggle {
+            background-color: var(--ui-active);
+            border-color: var(--ui-border);
+            color: var(--accent-amber);
+        }
+
+        /* Environment & Theme Settings Controls */
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+
+        .theme-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background-color: rgba(0, 0, 0, 0.18);
+            border: 1px solid transparent;
+            font-size: 12px;
+            width: 100%;
+            text-align: left;
+        }
+
+        .theme-card:hover {
+            background-color: var(--ui-hover);
+        }
+
+        .theme-card.active {
+            background-color: var(--ui-active);
+            border-color: var(--accent-amber);
+            color: var(--accent-amber);
+        }
+
+        .swatch-row {
+            display: inline-flex;
+            gap: 3px;
+            align-items: center;
+        }
+
+        .swatch-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 2px;
+        }
+
+        .segmented-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 4px;
+            border-radius: 11px;
+            border: 1px solid var(--ui-border);
+        }
+
+        .seg-btn {
+            justify-content: center;
+            padding: 5px 8px;
+            font-size: 11.5px;
+            border-radius: 7px;
+            width: 100%;
+        }
+
+        .seg-btn.active {
+            background-color: var(--ui-active);
+            color: var(--accent-amber);
+            border-color: var(--ui-border);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 12px;
+                gap: 12px;
+            }
+            #canvas-wrapper {
+                padding: 8px;
+                border-radius: 16px;
+            }
+            button {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+            .info-module {
+                bottom: 66px;
+                width: calc(100% - 24px);
+                padding: 15px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-wrapper">
+        <canvas id="grid-canvas"></canvas>
+    </div>
+
+    <aside id="env-module" class="info-module hidden" role="dialog" aria-labelledby="env-title">
+        <div class="info-header">
+            <div class="info-title" id="env-title">
+                <span class="mini-cell amber" id="env-indicator"></span>
+                <span>Environment</span>
+            </div>
+            <button id="btn-env-close" class="info-close" type="button" aria-label="Close environment settings">✕</button>
+        </div>
+
+        <div class="info-section">
+            <div class="info-label">Theme Palette</div>
+            <div class="theme-grid" id="theme-selector">
+                <button type="button" class="theme-card active" data-theme="twilight">
+                    <span>Twilight</span>
+                    <span class="swatch-row">
+                        <span class="swatch-dot" style="background:#F5D799"></span>
+                        <span class="swatch-dot" style="background:#E5A8B2"></span>
+                        <span class="swatch-dot" style="background:#A8CCB3"></span>
+                    </span>
+                </button>
+                <button type="button" class="theme-card" data-theme="moss">
+                    <span>Forest Moss</span>
+                    <span class="swatch-row">
+                        <span class="swatch-dot" style="background:#A7D6A2"></span>
+                        <span class="swatch-dot" style="background:#E8CA88"></span>
+                        <span class="swatch-dot" style="background:#7AB596"></span>
+                    </span>
+                </button>
+                <button type="button" class="theme-card" data-theme="hearth">
+                    <span>Warm Hearth</span>
+                    <span class="swatch-row">
+                        <span class="swatch-dot" style="background:#F4B678"></span>
+                        <span class="swatch-dot" style="background:#E2866B"></span>
+                        <span class="swatch-dot" style="background:#FCE0AD"></span>
+                    </span>
+                </button>
+                <button type="button" class="theme-card" data-theme="tide">
+                    <span>Midnight Tide</span>
+                    <span class="swatch-row">
+                        <span class="swatch-dot" style="background:#90D6E0"></span>
+                        <span class="swatch-dot" style="background:#F0C999"></span>
+                        <span class="swatch-dot" style="background:#9EB5F0"></span>
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-label">Cell Scale</div>
+            <div class="segmented-row" id="scale-selector">
+                <button type="button" class="seg-btn" data-scale="cozy">Cozy</button>
+                <button type="button" class="seg-btn active" data-scale="standard">Standard</button>
+                <button type="button" class="seg-btn" data-scale="fine">Fine</button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-label">Simulation Pace</div>
+            <div class="segmented-row" id="speed-selector">
+                <button type="button" class="seg-btn" data-speed="slow">Slow</button>
+                <button type="button" class="seg-btn active" data-speed="normal">Normal</button>
+                <button type="button" class="seg-btn" data-speed="brisk">Brisk</button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-label">Afterglow Trail</div>
+            <div class="segmented-row" id="trail-selector">
+                <button type="button" class="seg-btn" data-trail="crisp">Crisp</button>
+                <button type="button" class="seg-btn active" data-trail="soft">Soft</button>
+                <button type="button" class="seg-btn" data-trail="dreamy">Dreamy</button>
+            </div>
+        </div>
+    </aside>
+
+    <aside id="info-module" class="info-module hidden" role="dialog" aria-labelledby="info-title">
+        <div class="info-header">
+            <div class="info-title" id="info-title">
+                <span class="mini-cell amber"></span>
+                <span>How It Works</span>
+            </div>
+            <button id="btn-info-close" class="info-close" type="button" aria-label="Close guide">✕</button>
+        </div>
+
+        <div class="info-section">
+            <div class="info-label">The Rules of Life</div>
+            <ul class="rule-list">
+                <li class="rule-item">
+                    <span class="mini-cell amber"></span>
+                    <span><strong>Survival:</strong> A lit cell with <strong>2 or 3</strong> neighbors stays warm and lit.</span>
+                </li>
+                <li class="rule-item">
+                    <span class="mini-cell sage"></span>
+                    <span><strong>Birth:</strong> An empty cell with <strong>3</strong> neighbors sparks to life.</span>
+                </li>
+                <li class="rule-item">
+                    <span class="mini-cell dead"></span>
+                    <span><strong>Fading:</strong> With fewer than 2 or more than 3 neighbors, a cell dims out.</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="info-section">
+            <div class="info-label">Interaction & World</div>
+            <ul class="rule-list">
+                <li class="rule-item">
+                    <span class="mini-cell pink"></span>
+                    <span><strong>Plant Seeds:</strong> Click or drag across the grid anytime to toggle or draw living cells.</span>
+                </li>
+                <li class="rule-item">
+                    <span class="mini-cell amber"></span>
+                    <span><strong>Endless Torus:</strong> Edges wrap around seamlessly so gliders travel forever.</span>
+                </li>
+            </ul>
+        </div>
+    </aside>
+
+    <nav class="controls" aria-label="Simulation Controls">
+        <button id="btn-play" class="primary" type="button">
+            <span class="status-dot" id="play-dot"></span>
+            <span id="play-label">Pause</span>
+        </button>
+        <button id="btn-step" type="button" disabled>Step</button>
+        <div class="divider"></div>
+        <button id="btn-random" type="button">Random</button>
+        <button id="btn-clear" type="button">Clear</button>
+        <div class="divider"></div>
+        <button id="btn-env" type="button" aria-expanded="false" title="Environment & Themes">Env</button>
+        <button id="btn-info" type="button" aria-expanded="false" title="How it works">?</button>
+    </nav>
+
+    <script>
+        (function() {
+            const THEMES = {
+                twilight: {
+                    vars: {
+                        '--bg-night': '#1E1826',
+                        '--board-bg': '#17121E',
+                        '--board-border': '#2B2336',
+                        '--cell-dead': '#251E30',
+                        '--ui-bg': '#272033',
+                        '--ui-bg-alpha': 'rgba(39, 32, 51, 0.94)',
+                        '--ui-border': '#382E47',
+                        '--ui-hover': '#352B45',
+                        '--ui-active': '#433757',
+                        '--text-main': '#E6DEC8',
+                        '--text-muted': '#7E738F',
+                        '--accent-amber': '#F5D799'
+                    },
+                    dead: { r: 37, g: 30, b: 48 },
+                    palette: [
+                        { r: 245, g: 215, b: 153 }, // Warm Amber / Cream
+                        { r: 250, g: 230, b: 182 }, // Soft Lit Window Cream
+                        { r: 238, g: 188, b: 128 }, // Cozy Honey Gold
+                        { r: 229, g: 168, b: 178 }, // Soft Dusty Rose Pink
+                        { r: 168, g: 204, b: 179 }  // Soft Sage Green
+                    ]
+                },
+                moss: {
+                    vars: {
+                        '--bg-night': '#141E19',
+                        '--board-bg': '#0F1713',
+                        '--board-border': '#203028',
+                        '--cell-dead': '#1B2922',
+                        '--ui-bg': '#1C2B23',
+                        '--ui-bg-alpha': 'rgba(28, 43, 35, 0.94)',
+                        '--ui-border': '#2C4236',
+                        '--ui-hover': '#263B30',
+                        '--ui-active': '#314D3E',
+                        '--text-main': '#DCE8DF',
+                        '--text-muted': '#6D8777',
+                        '--accent-amber': '#A7D6A2'
+                    },
+                    dead: { r: 27, g: 41, b: 34 },
+                    palette: [
+                        { r: 167, g: 214, b: 162 }, // Soft Fern
+                        { r: 210, g: 232, b: 190 }, // Lichen Cream
+                        { r: 232, g: 202, b: 136 }, // Firefly Gold
+                        { r: 122, g: 181, b: 150 }, // Deep Moss
+                        { r: 224, g: 173, b: 158 }  // Woodland Mushroom
+                    ]
+                },
+                hearth: {
+                    vars: {
+                        '--bg-night': '#221715',
+                        '--board-bg': '#1A110F',
+                        '--board-border': '#33221E',
+                        '--cell-dead': '#2B1D1A',
+                        '--ui-bg': '#2E1F1C',
+                        '--ui-bg-alpha': 'rgba(46, 31, 28, 0.94)',
+                        '--ui-border': '#452F2A',
+                        '--ui-hover': '#3D2925',
+                        '--ui-active': '#4F3630',
+                        '--text-main': '#EDE0D4',
+                        '--text-muted': '#8C726B',
+                        '--accent-amber': '#F4B678'
+                    },
+                    dead: { r: 43, g: 29, b: 26 },
+                    palette: [
+                        { r: 244, g: 182, b: 120 }, // Warm Ember
+                        { r: 252, g: 224, b: 173 }, // Candlelight
+                        { r: 226, g: 134, b: 107 }, // Terracotta Glow
+                        { r: 219, g: 164, b: 154 }, // Dusty Rose Ash
+                        { r: 194, g: 199, b: 157 }  // Dry Sage Herb
+                    ]
+                },
+                tide: {
+                    vars: {
+                        '--bg-night': '#131C26',
+                        '--board-bg': '#0E151D',
+                        '--board-border': '#1E2D3D',
+                        '--cell-dead': '#192634',
+                        '--ui-bg': '#1B2838',
+                        '--ui-bg-alpha': 'rgba(27, 40, 56, 0.94)',
+                        '--ui-border': '#2B3E54',
+                        '--ui-hover': '#25374B',
+                        '--ui-active': '#314963',
+                        '--text-main': '#DAE6F0',
+                        '--text-muted': '#698199',
+                        '--accent-amber': '#90D6E0'
+                    },
+                    dead: { r: 25, g: 38, b: 52 },
+                    palette: [
+                        { r: 144, g: 214, b: 224 }, // Bioluminescent Aqua
+                        { r: 197, g: 235, b: 238 }, // Seafoam Mist
+                        { r: 240, g: 201, b: 153 }, // Lantern Sand
+                        { r: 158, g: 181, b: 240 }, // Periwinkle Drift
+                        { r: 227, g: 168, b: 189 }  // Coral Anemone
+                    ]
+                }
+            };
+
+            const SCALES = {
+                cozy:     { pitch: 22, gap: 4, radius: 5.0 },
+                standard: { pitch: 16, gap: 3, radius: 3.5 },
+                fine:     { pitch: 11, gap: 2, radius: 2.2 }
+            };
+
+            const SPEEDS = {
+                slow:   { label: 'Slow',   interval: 260 },
+                normal: { label: 'Normal', interval: 125 },
+                brisk:  { label: 'Brisk',  interval: 65 }
+            };
+
+            const TRAILS = {
+                crisp:  { fadeIn: 0.22, fadeOut: 0.45 },
+                soft:   { fadeIn: 0.45, fadeOut: 1.15 },
+                dreamy: { fadeIn: 0.65, fadeOut: 2.80 }
+            };
+
+            let activeTheme = THEMES.twilight;
+            let PALETTE = activeTheme.palette;
+            let DEAD_COLOR = activeTheme.dead;
+
+            let currentScale = SCALES.standard;
+            let CELL_PITCH = currentScale.pitch;
+            let CELL_GAP = currentScale.gap;
+            let CELL_SIZE = CELL_PITCH - CELL_GAP;
+            let CELL_RADIUS = currentScale.radius;
+
+            let currentSpeed = SPEEDS.normal;
+            let currentTrail = TRAILS.soft;
+
+            const canvas = document.getElementById('grid-canvas');
+            const ctx = canvas.getContext('2d');
+            const wrapper = document.getElementById('canvas-wrapper');
+
+            const btnPlay = document.getElementById('btn-play');
+            const playLabel = document.getElementById('play-label');
+            const playDot = document.getElementById('play-dot');
+            const btnStep = document.getElementById('btn-step');
+            const btnRandom = document.getElementById('btn-random');
+            const btnClear = document.getElementById('btn-clear');
+            const btnEnv = document.getElementById('btn-env');
+            const btnEnvClose = document.getElementById('btn-env-close');
+            const envModule = document.getElementById('env-module');
+            const btnInfo = document.getElementById('btn-info');
+            const btnInfoClose = document.getElementById('btn-info-close');
+            const infoModule = document.getElementById('info-module');
+
+            let cols = 0;
+            let rows = 0;
+            let dpr = window.devicePixelRatio || 1;
+
+            // Typed arrays for state & cozy visual interpolation
+            let grid = new Uint8Array(0);
+            let nextGrid = new Uint8Array(0);
+            let colorGrid = new Uint8Array(0);
+            let nextColorGrid = new Uint8Array(0);
+            let visualBrightness = new Float32Array(0);
+
+            // Respect prefers-reduced-motion on initial load
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            let isRunning = !prefersReducedMotion;
+
+            let lastTickTime = performance.now();
+            let lastFrameTime = performance.now();
+
+            // Pointer drawing state
+            let isDrawing = false;
+            let drawMode = 1; // 1 = plant live cell, 0 = erase cell
+            let lastHoveredIndex = -1;
+
+            function pickRandomCozyColor() {
+                const rand = Math.random();
+                if (rand < 0.36) return 0; // Warm Amber
+                if (rand < 0.68) return 1; // Soft Cream
+                if (rand < 0.82) return 2; // Honey Gold
+                if (rand < 0.91) return 3; // Soft Pink (9%)
+                return 4;                  // Soft Sage (9%)
+            }
+
+            function pickInheritedOrRandomColor(dominantColorIndex) {
+                if (dominantColorIndex >= 0 && Math.random() < 0.78) {
+                    return dominantColorIndex;
+                }
+                return pickRandomCozyColor();
+            }
+
+            function initOrResizeGrid(preserveContent = true) {
+                const style = window.getComputedStyle(wrapper);
+                const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+                const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+
+                const availW = Math.max(160, wrapper.clientWidth - padX);
+                const availH = Math.max(160, wrapper.clientHeight - padY);
+
+                const newCols = Math.max(10, Math.floor(availW / CELL_PITCH));
+                const newRows = Math.max(10, Math.floor(availH / CELL_PITCH));
+
+                dpr = window.devicePixelRatio || 1;
+                const cssW = newCols * CELL_PITCH;
+                const cssH = newRows * CELL_PITCH;
+
+                canvas.style.width = cssW + 'px';
+                canvas.style.height = cssH + 'px';
+                canvas.width = Math.floor(cssW * dpr);
+                canvas.height = Math.floor(cssH * dpr);
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                if (newCols === cols && newRows === rows && grid.length > 0) {
+                    return;
+                }
+
+                const newSize = newCols * newRows;
+                const newGrid = new Uint8Array(newSize);
+                const newNextGrid = new Uint8Array(newSize);
+                const newColorGrid = new Uint8Array(newSize);
+                const newNextColorGrid = new Uint8Array(newSize);
+                const newBrightness = new Float32Array(newSize);
+
+                if (preserveContent && cols > 0 && rows > 0) {
+                    const offsetC = Math.floor((newCols - cols) / 2);
+                    const offsetR = Math.floor((newRows - rows) / 2);
+
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            const oldIdx = r * cols + c;
+                            if (grid[oldIdx] || visualBrightness[oldIdx] > 0.01) {
+                                const nr = (r + offsetR + newRows) % newRows;
+                                const nc = (c + offsetC + newCols) % newCols;
+                                const newIdx = nr * newCols + nc;
+                                newGrid[newIdx] = grid[oldIdx];
+                                newColorGrid[newIdx] = colorGrid[oldIdx];
+                                newBrightness[newIdx] = visualBrightness[oldIdx];
+                            }
+                        }
+                    }
+                }
+
+                cols = newCols;
+                rows = newRows;
+                grid = newGrid;
+                nextGrid = newNextGrid;
+                colorGrid = newColorGrid;
+                nextColorGrid = newNextColorGrid;
+                visualBrightness = newBrightness;
+            }
+
+            function setCell(c, r, alive, colorIdx = null, instant = false) {
+                const wc = (c + cols) % cols;
+                const wr = (r + rows) % rows;
+                const idx = wr * cols + wc;
+
+                grid[idx] = alive ? 1 : 0;
+                if (alive) {
+                    colorGrid[idx] = colorIdx !== null ? colorIdx : pickRandomCozyColor();
+                    visualBrightness[idx] = instant ? 1.0 : Math.max(visualBrightness[idx], 0.35);
+                } else if (instant) {
+                    visualBrightness[idx] = 0.0;
+                }
+            }
+
+            function placePattern(coords, centerC, centerR, colorIdx = null) {
+                const chosenColor = colorIdx !== null ? colorIdx : pickRandomCozyColor();
+                for (let i = 0; i < coords.length; i++) {
+                    const [dc, dr] = coords[i];
+                    setCell(centerC + dc, centerR + dr, true, chosenColor, true);
+                }
+            }
+
+            function seedInitialClassicPatterns() {
+                grid.fill(0);
+                visualBrightness.fill(0);
+
+                // 1. Classic Glider (upper-left quadrant, traveling southeast)
+                const glider = [
+                    [1, 0],
+                    [2, 1],
+                    [0, 2], [1, 2], [2, 2]
+                ];
+                placePattern(glider, Math.floor(cols * 0.25), Math.floor(rows * 0.28), 0);
+
+                // 2. Blinker oscillator (upper-right quadrant)
+                const blinker = [
+                    [-1, 0], [0, 0], [1, 0]
+                ];
+                placePattern(blinker, Math.floor(cols * 0.72), Math.floor(rows * 0.30), 3);
+
+                // 3. Beehive still life (lower-left quadrant)
+                const beehive = [
+                    [1, 0], [2, 0],
+                    [0, 1], [3, 1],
+                    [1, 2], [2, 2]
+                ];
+                placePattern(beehive, Math.floor(cols * 0.30), Math.floor(rows * 0.68), 1);
+
+                // 4. Loaf still life or second glider if space permits (lower-right quadrant)
+                const loaf = [
+                    [1, 0], [2, 0],
+                    [0, 1], [3, 1],
+                    [1, 2], [3, 2],
+                    [2, 3]
+                ];
+                placePattern(loaf, Math.floor(cols * 0.68), Math.floor(rows * 0.66), 4);
+            }
+
+            function stepGeneration() {
+                const colorCounts = new Uint8Array(PALETTE.length);
+
+                for (let r = 0; r < rows; r++) {
+                    const rUp = (r === 0 ? rows - 1 : r - 1) * cols;
+                    const rMid = r * cols;
+                    const rDown = (r === rows - 1 ? 0 : r + 1) * cols;
+
+                    for (let c = 0; c < cols; c++) {
+                        const cLeft = c === 0 ? cols - 1 : c - 1;
+                        const cRight = c === cols - 1 ? 0 : c + 1;
+
+                        const n0 = rUp + cLeft;
+                        const n1 = rUp + c;
+                        const n2 = rUp + cRight;
+                        const n3 = rMid + cLeft;
+                        const n4 = rMid + cRight;
+                        const n5 = rDown + cLeft;
+                        const n6 = rDown + c;
+                        const n7 = rDown + cRight;
+
+                        const neighbors =
+                            grid[n0] + grid[n1] + grid[n2] +
+                            grid[n3] + grid[n4] +
+                            grid[n5] + grid[n6] + grid[n7];
+
+                        const idx = rMid + c;
+                        const currentlyAlive = grid[idx] === 1;
+
+                        if (currentlyAlive) {
+                            if (neighbors === 2 || neighbors === 3) {
+                                nextGrid[idx] = 1;
+                                nextColorGrid[idx] = colorGrid[idx];
+                            } else {
+                                nextGrid[idx] = 0;
+                                nextColorGrid[idx] = colorGrid[idx]; // Keep warm hue while dimming out
+                            }
+                        } else {
+                            if (neighbors === 3) {
+                                nextGrid[idx] = 1;
+                                // Tally neighbor colors to give newborn cells a cozy organic color inheritance
+                                colorCounts.fill(0);
+                                if (grid[n0]) colorCounts[colorGrid[n0]]++;
+                                if (grid[n1]) colorCounts[colorGrid[n1]]++;
+                                if (grid[n2]) colorCounts[colorGrid[n2]]++;
+                                if (grid[n3]) colorCounts[colorGrid[n3]]++;
+                                if (grid[n4]) colorCounts[colorGrid[n4]]++;
+                                if (grid[n5]) colorCounts[colorGrid[n5]]++;
+                                if (grid[n6]) colorCounts[colorGrid[n6]]++;
+                                if (grid[n7]) colorCounts[colorGrid[n7]]++;
+
+                                let dominantColor = 0;
+                                let maxCount = 0;
+                                for (let k = 0; k < PALETTE.length; k++) {
+                                    if (colorCounts[k] > maxCount) {
+                                        maxCount = colorCounts[k];
+                                        dominantColor = k;
+                                    }
+                                }
+                                nextColorGrid[idx] = pickInheritedOrRandomColor(dominantColor);
+                            } else {
+                                nextGrid[idx] = 0;
+                                nextColorGrid[idx] = colorGrid[idx];
+                            }
+                        }
+                    }
+                }
+
+                // Swap buffers
+                const tempGrid = grid;
+                grid = nextGrid;
+                nextGrid = tempGrid;
+
+                const tempColor = colorGrid;
+                colorGrid = nextColorGrid;
+                nextColorGrid = tempColor;
+            }
+
+            function drawRoundedCell(x, y, size, radius) {
+                if (ctx.roundRect) {
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, size, size, radius);
+                    ctx.fill();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(x + radius, y);
+                    ctx.lineTo(x + size - radius, y);
+                    ctx.quadraticCurveTo(x + size, y, x + size, y + radius);
+                    ctx.lineTo(x + size, y + size - radius);
+                    ctx.quadraticCurveTo(x + size, y + size, x + size - radius, y + size);
+                    ctx.lineTo(x + radius, y + size);
+                    ctx.quadraticCurveTo(x, y + size, x, y + size - radius);
+                    ctx.lineTo(x, y + radius);
+                    ctx.quadraticCurveTo(x, y, x + radius, y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            function render(dt) {
+                ctx.clearRect(0, 0, cols * CELL_PITCH, rows * CELL_PITCH);
+
+                // Smooth fade speeds scaled to current generation interval and chosen trail length
+                const stepDurationSec = currentSpeed.interval / 1000;
+                const fadeInRate = dt / (stepDurationSec * currentTrail.fadeIn);
+                const fadeOutRate = dt / (stepDurationSec * currentTrail.fadeOut);
+
+                const deadFill = `rgb(${DEAD_COLOR.r}, ${DEAD_COLOR.g}, ${DEAD_COLOR.b})`;
+                const offset = CELL_GAP / 2;
+
+                for (let r = 0; r < rows; r++) {
+                    const y = r * CELL_PITCH + offset;
+                    const rowOffset = r * cols;
+
+                    for (let c = 0; c < cols; c++) {
+                        const idx = rowOffset + c;
+                        const target = grid[idx];
+                        let b = visualBrightness[idx];
+
+                        if (target === 1 && b < 1.0) {
+                            b = Math.min(1.0, b + fadeInRate);
+                            visualBrightness[idx] = b;
+                        } else if (target === 0 && b > 0.0) {
+                            b = Math.max(0.0, b - fadeOutRate);
+                            visualBrightness[idx] = b;
+                        }
+
+                        const x = c * CELL_PITCH + offset;
+
+                        if (b <= 0.005) {
+                            ctx.fillStyle = deadFill;
+                            drawRoundedCell(x, y, CELL_SIZE, CELL_RADIUS);
+                        } else {
+                            const pal = PALETTE[colorGrid[idx]];
+                            const cr = Math.round(DEAD_COLOR.r + (pal.r - DEAD_COLOR.r) * b);
+                            const cg = Math.round(DEAD_COLOR.g + (pal.g - DEAD_COLOR.g) * b);
+                            const cb = Math.round(DEAD_COLOR.b + (pal.b - DEAD_COLOR.b) * b);
+
+                            ctx.fillStyle = `rgb(${cr}, ${cg}, ${cb})`;
+                            drawRoundedCell(x, y, CELL_SIZE, CELL_RADIUS);
+                        }
+                    }
+                }
+            }
+
+            function loop(now) {
+                const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
+                lastFrameTime = now;
+
+                if (isRunning && (now - lastTickTime >= currentSpeed.interval)) {
+                    stepGeneration();
+                    lastTickTime = now;
+                }
+
+                render(dt);
+                requestAnimationFrame(loop);
+            }
+
+            // UI Controls & State Sync
+            function updatePlayUI() {
+                if (isRunning) {
+                    playLabel.textContent = 'Pause';
+                    playDot.classList.add('active');
+                    btnStep.disabled = true;
+                } else {
+                    playLabel.textContent = 'Play';
+                    playDot.classList.remove('active');
+                    btnStep.disabled = false;
+                }
+            }
+
+            btnPlay.addEventListener('click', () => {
+                isRunning = !isRunning;
+                if (isRunning) {
+                    lastTickTime = performance.now();
+                }
+                updatePlayUI();
+            });
+
+            btnStep.addEventListener('click', () => {
+                if (!isRunning) {
+                    stepGeneration();
+                }
+            });
+
+            btnRandom.addEventListener('click', () => {
+                for (let i = 0; i < grid.length; i++) {
+                    const alive = Math.random() < 0.16 ? 1 : 0;
+                    grid[i] = alive;
+                    if (alive) {
+                        colorGrid[i] = pickRandomCozyColor();
+                    }
+                }
+                lastTickTime = performance.now();
+            });
+
+            btnClear.addEventListener('click', () => {
+                grid.fill(0);
+            });
+
+            function setModuleVisibility(targetModule, targetBtn, show) {
+                if (show) {
+                    targetModule.classList.remove('hidden');
+                    targetBtn.classList.add('active-toggle');
+                    targetBtn.setAttribute('aria-expanded', 'true');
+                } else {
+                    targetModule.classList.add('hidden');
+                    targetBtn.classList.remove('active-toggle');
+                    targetBtn.setAttribute('aria-expanded', 'false');
+                }
+            }
+
+            function toggleEnvModule(forceState) {
+                const isHidden = envModule.classList.contains('hidden');
+                const shouldShow = forceState !== undefined ? forceState : isHidden;
+                if (shouldShow) {
+                    setModuleVisibility(infoModule, btnInfo, false);
+                }
+                setModuleVisibility(envModule, btnEnv, shouldShow);
+            }
+
+            function toggleInfoModule(forceState) {
+                const isHidden = infoModule.classList.contains('hidden');
+                const shouldShow = forceState !== undefined ? forceState : isHidden;
+                if (shouldShow) {
+                    setModuleVisibility(envModule, btnEnv, false);
+                }
+                setModuleVisibility(infoModule, btnInfo, shouldShow);
+            }
+
+            btnEnv.addEventListener('click', () => toggleEnvModule());
+            btnEnvClose.addEventListener('click', () => toggleEnvModule(false));
+
+            btnInfo.addEventListener('click', () => toggleInfoModule());
+            btnInfoClose.addEventListener('click', () => toggleInfoModule(false));
+
+            // Theme & Environment Selectors
+            function applyTheme(themeKey) {
+                const theme = THEMES[themeKey];
+                if (!theme) return;
+                activeTheme = theme;
+                PALETTE = theme.palette;
+                DEAD_COLOR = theme.dead;
+
+                const root = document.documentElement;
+                for (const [prop, val] of Object.entries(theme.vars)) {
+                    root.style.setProperty(prop, val);
+                }
+            }
+
+            document.getElementById('theme-selector').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-theme]');
+                if (!btn) return;
+                document.querySelectorAll('#theme-selector .theme-card').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                applyTheme(btn.dataset.theme);
+            });
+
+            document.getElementById('scale-selector').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-scale]');
+                if (!btn) return;
+                const scale = SCALES[btn.dataset.scale];
+                if (!scale || scale === currentScale) return;
+
+                document.querySelectorAll('#scale-selector .seg-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                currentScale = scale;
+                CELL_PITCH = scale.pitch;
+                CELL_GAP = scale.gap;
+                CELL_SIZE = CELL_PITCH - CELL_GAP;
+                CELL_RADIUS = scale.radius;
+
+                initOrResizeGrid(true);
+            });
+
+            document.getElementById('speed-selector').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-speed]');
+                if (!btn) return;
+                const speed = SPEEDS[btn.dataset.speed];
+                if (!speed) return;
+
+                document.querySelectorAll('#speed-selector .seg-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentSpeed = speed;
+            });
+
+            document.getElementById('trail-selector').addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-trail]');
+                if (!btn) return;
+                const trail = TRAILS[btn.dataset.trail];
+                if (!trail) return;
+
+                document.querySelectorAll('#trail-selector .seg-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentTrail = trail;
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (!infoModule.classList.contains('hidden')) toggleInfoModule(false);
+                    if (!envModule.classList.contains('hidden')) toggleEnvModule(false);
+                }
+            });
+
+            // Pointer / Touch Interaction for planting & toggling cells
+            function getCellFromPointerEvent(e) {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+                const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+
+                const x = clientX - rect.left;
+                const y = clientY - rect.top;
+
+                const c = Math.floor(x / CELL_PITCH);
+                const r = Math.floor(y / CELL_PITCH);
+
+                if (c < 0 || c >= cols || r < 0 || r >= rows) return null;
+                return { c, r, idx: r * cols + c };
+            }
+
+            canvas.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                canvas.setPointerCapture(e.pointerId);
+                const cell = getCellFromPointerEvent(e);
+                if (!cell) return;
+
+                isDrawing = true;
+                // Clicking a single cell toggles it; dragging plants live cells (or erases if started on a live cell)
+                drawMode = grid[cell.idx] === 1 ? 0 : 1;
+                lastHoveredIndex = cell.idx;
+
+                setCell(cell.c, cell.r, drawMode === 1);
+            });
+
+            canvas.addEventListener('pointermove', (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const cell = getCellFromPointerEvent(e);
+                if (!cell || cell.idx === lastHoveredIndex) return;
+
+                lastHoveredIndex = cell.idx;
+                // When dragging across multiple cells, plant seeds if started on empty or if drawing continuously
+                setCell(cell.c, cell.r, drawMode === 1);
+            });
+
+            function stopPointerDrawing(e) {
+                if (!isDrawing) return;
+                isDrawing = false;
+                lastHoveredIndex = -1;
+            }
+
+            canvas.addEventListener('pointerup', stopPointerDrawing);
+            canvas.addEventListener('pointercancel', stopPointerDrawing);
+
+            // Handle responsive resize cleanly without wiping patterns
+            let resizeTimer = null;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => {
+                    initOrResizeGrid(true);
+                }, 40);
+            });
+
+            // Initialize board and start
+            initOrResizeGrid(false);
+            seedInitialClassicPatterns();
+            updatePlayUI();
+            requestAnimationFrame(loop);
+        })();
+    </script>
+</body>
+</html>

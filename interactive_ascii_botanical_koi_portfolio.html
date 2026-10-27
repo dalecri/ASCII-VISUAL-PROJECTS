@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cristobal D'Alessio — Indie App Developer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+        /* Subtle custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(150, 150, 150, 0.3);
+            border-radius: 9999px;
+        }
+        .glass-pill {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        @keyframes pulse-subtle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(3px); }
+        }
+        .animate-bounce-slow {
+            animation: pulse-subtle 3s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-[#FAF9F5] dark:bg-[#0D1017] text-stone-900 dark:text-stone-100 font-sans transition-colors duration-500 selection:bg-pink-200 dark:selection:bg-pink-900">
+
+    <!-- HERO SECTION WITH LIVE INTERACTIVE ASCII CANVAS -->
+    <section class="relative w-full h-screen overflow-hidden flex flex-col justify-between">
+        
+        <!-- Interactive ASCII Canvas Background -->
+        <canvas id="ascii-canvas" class="absolute inset-0 w-full h-full cursor-crosshair z-0"></canvas>
+
+        <!-- Top Navigation Bar -->
+        <header class="relative z-20 w-full max-w-[1440px] mx-auto px-6 sm:px-10 pt-6 pb-4 flex items-center justify-between text-xs sm:text-[13px] tracking-tight">
+            <!-- Left Links -->
+            <nav class="flex items-center space-x-6 sm:space-x-8 font-medium text-stone-600 dark:text-stone-400">
+                <a href="#work" class="hover:text-stone-950 dark:hover:text-white transition-colors">Work</a>
+                <button id="toggle-playground-btn" class="hover:text-stone-950 dark:hover:text-white transition-colors flex items-center gap-1.5">
+                    <span>Playground</span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                </button>
+                <a href="#writing" class="hover:text-stone-950 dark:hover:text-white transition-colors">Writing</a>
+            </nav>
+
+            <!-- Right Socials, Email & Theme Toggle -->
+            <div class="flex items-center space-x-3.5 sm:space-x-5 text-stone-600 dark:text-stone-400">
+                <!-- Portfolio / Web -->
+                <a href="https://heycristobal.com" target="_blank" rel="noopener" aria-label="heycristobal.com" title="heycristobal.com" class="hover:text-stone-950 dark:hover:text-white transition-colors font-mono text-[11px] hidden sm:inline">
+                    heycristobal.com ↗
+                </a>
+                <!-- LinkedIn -->
+                <a href="https://www.linkedin.com/search/results/all/?keywords=Cristobal%20D%27Alessio" target="_blank" rel="noopener" aria-label="LinkedIn" title="LinkedIn" class="hover:text-stone-950 dark:hover:text-white transition-colors">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/></svg>
+                </a>
+                <!-- TwoStoryTails TikTok / Social -->
+                <a href="https://www.tiktok.com/@twostorytails" target="_blank" rel="noopener" aria-label="TwoStoryTails" title="@twostorytails" class="hover:text-stone-950 dark:hover:text-white transition-colors">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/></svg>
+                </a>
+
+                <!-- Email Copy Button -->
+                <button id="copy-email-btn" class="hidden md:flex items-center space-x-1.5 hover:text-stone-950 dark:hover:text-white transition-colors group relative">
+                    <span class="font-mono text-[12px]">workwithcristobal@gmail.com</span>
+                    <svg class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                        <rect width="13" height="13" x="9" y="9" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span id="copy-toast" class="absolute -bottom-7 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[10px] font-mono rounded opacity-0 pointer-events-none transition-opacity">Copied!</span>
+                </button>
+
+                <!-- Dark / Light Mode Toggle -->
+                <button id="theme-toggle" aria-label="Toggle Theme" class="p-1.5 rounded-full hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition-colors">
+                    <!-- Moon icon -->
+                    <svg id="moon-icon" class="w-3.5 h-3.5 block dark:hidden fill-current" viewBox="0 0 24 24">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <!-- Sun icon -->
+                    <svg id="sun-icon" class="w-3.5 h-3.5 hidden dark:block fill-current text-amber-300" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="5"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Centerpiece Typography (Matches Reference Layout) -->
+        <main class="relative z-10 flex-1 flex flex-col items-center justify-center px-4 text-center pointer-events-none">
+            <div class="max-w-xl mx-auto px-6 py-8 rounded-3xl transition-all duration-300">
+                <h1 class="text-5xl sm:text-6xl md:text-[64px] font-normal tracking-[-0.03em] text-stone-900 dark:text-stone-50 mb-3 leading-none select-text pointer-events-auto">
+                    Cristobal D'Alessio
+                </h1>
+                
+                <p class="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.26em] text-stone-500 dark:text-stone-400 mb-6">
+                    INDIE APP DEVELOPER
+                </p>
+
+                <p class="text-sm sm:text-[15px] leading-relaxed text-stone-600 dark:text-stone-300 max-w-[490px] mx-auto mb-8 font-normal select-text pointer-events-auto">
+                    <strong class="font-semibold text-stone-900 dark:text-white">Building cozy, calm apps &amp; making technical things clear.</strong> Crafting tiny isometric voxel worlds like <a href="#work" class="underline decoration-stone-400 underline-offset-4 hover:text-stone-950 dark:hover:text-white transition-colors">Lofi Rooms</a> &amp; <a href="#work" class="underline decoration-stone-400 underline-offset-4 hover:text-stone-950 dark:hover:text-white transition-colors">Pomodoro Terrarium</a>, calm reading tools like <a href="#work" class="underline decoration-stone-400 underline-offset-4 hover:text-stone-950 dark:hover:text-white transition-colors">Lamplight</a>, and negotiating with four cats in the Laurentians, Québec.
+                </p>
+
+                <!-- Pill CTA Buttons -->
+                <div class="pointer-events-auto inline-flex flex-wrap items-center justify-center gap-2.5">
+                    <a href="https://heycristobal.com" target="_blank" rel="noopener" class="glass-pill inline-flex items-center space-x-1.5 px-4 py-2 rounded-full bg-stone-200/75 dark:bg-stone-800/80 hover:bg-stone-300/80 dark:hover:bg-stone-700/80 text-stone-800 dark:text-stone-200 text-xs font-medium transition-all shadow-sm hover:shadow">
+                        <span>heycristobal.com</span>
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M7 7h10v10"/></svg>
+                    </a>
+                    <a href="https://www.tiktok.com/@twostorytails" target="_blank" rel="noopener" class="glass-pill inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-full bg-stone-200/55 dark:bg-stone-800/60 hover:bg-stone-300/80 dark:hover:bg-stone-700/80 text-stone-700 dark:text-stone-300 text-xs font-mono transition-all">
+                        <span>@twostorytails (4 cats, 2 floors)</span>
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17L17 7M7 7h10v10"/></svg>
+                    </a>
+                </div>
+            </div>
+        </main>
+
+        <!-- Floating Vibe Controller Drawer (Interactive Surprise) -->
+        <aside id="vibe-drawer" class="fixed top-16 right-6 z-30 w-72 glass-pill bg-white/85 dark:bg-stone-900/85 border border-stone-200/80 dark:border-stone-800 rounded-2xl p-4 shadow-xl transition-all duration-300 opacity-0 pointer-events-none translate-y-2">
+            <div class="flex items-center justify-between pb-3 mb-3 border-b border-stone-200/70 dark:border-stone-800">
+                <div class="flex items-center space-x-2">
+                    <span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200">ASCII Pond Studio</span>
+                </div>
+                <button id="close-drawer" class="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 text-xs font-mono">✕</button>
+            </div>
+
+            <!-- Palette Selector -->
+            <div class="mb-3.5">
+                <label class="block font-mono text-[10px] uppercase tracking-wider text-stone-400 mb-1.5">Season &amp; Biome</label>
+                <div class="grid grid-cols-3 gap-1.5 text-[11px] font-medium">
+                    <button data-season="lotus" class="season-btn px-2 py-1.5 rounded-lg bg-pink-100 dark:bg-pink-950/70 text-pink-900 dark:text-pink-200 border border-pink-300 dark:border-pink-700 transition-all">Lotus Pond</button>
+                    <button data-season="sakura" class="season-btn px-2 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border border-transparent hover:border-stone-300 transition-all">Sakura</button>
+                    <button data-season="cyber" class="season-btn px-2 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border border-transparent hover:border-stone-300 transition-all">Biolum</button>
+                </div>
+            </div>
+
+            <!-- Character Set Selector -->
+            <div class="mb-3.5">
+                <label class="block font-mono text-[10px] uppercase tracking-wider text-stone-400 mb-1.5">Glyph Matrix</label>
+                <div class="grid grid-cols-3 gap-1.5 text-[11px] font-mono">
+                    <button data-charset="classic" class="charset-btn px-2 py-1 rounded-lg bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900 transition-all">%#S8@t:</button>
+                    <button data-charset="katakana" class="charset-btn px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 transition-all">カキクケコ</button>
+                    <button data-charset="binary" class="charset-btn px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 transition-all">01.:;+</button>
+                </div>
+            </div>
+
+            <!-- Koi Fish Speed / Count -->
+            <div class="mb-4">
+                <div class="flex justify-between text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1">
+                    <span>SWIMMING KOI</span>
+                    <span id="koi-count-label">3 Fish</span>
+                </div>
+                <input id="koi-slider" type="range" min="0" max="6" value="3" class="w-full accent-pink-600 cursor-pointer h-1.5 bg-stone-200 dark:bg-stone-700 rounded-lg">
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-2">
+                <button id="feed-koi-btn" class="flex-1 py-1.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-xs font-mono transition-colors">
+                    ✦ Scatter Petals
+                </button>
+                <button id="regrow-btn" class="flex-1 py-1.5 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 text-xs font-mono transition-colors">
+                    ↻ Regrow
+                </button>
+            </div>
+            <p class="mt-2.5 text-[10px] font-mono text-stone-400 text-center">Tip: Click anywhere on the canvas to bloom a lotus</p>
+        </aside>
+
+        <!-- Bottom Bar: Floating Badge, Scroll Prompt, & Interactive Hint -->
+        <footer class="relative z-20 w-full max-w-[1440px] mx-auto px-6 sm:px-10 pb-6 flex items-end justify-between pointer-events-none">
+            <!-- Bottom Left Monogram Badge (Matches Reference) -->
+            <div class="pointer-events-auto flex items-center space-x-3">
+                <button id="monogram-btn" title="Open ASCII Studio Controls" class="w-9 h-9 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 flex items-center justify-center font-mono text-xs font-semibold shadow-md hover:scale-105 active:scale-95 transition-transform">
+                    C<span class="text-[9px] align-top text-pink-400 dark:text-pink-600">✦</span>
+                </button>
+                <span class="hidden sm:inline-block font-mono text-[11px] text-stone-400 dark:text-stone-500 bg-white/60 dark:bg-stone-900/60 px-2.5 py-1 rounded-full backdrop-blur-sm border border-stone-200/50 dark:border-stone-800/50">
+                    Move cursor to ripple • Click to plant lotus
+                </span>
+            </div>
+
+            <!-- Center Bottom WORK Arrow -->
+            <a href="#work" class="pointer-events-auto font-mono text-[10px] tracking-[0.25em] uppercase text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-colors flex items-center space-x-1 animate-bounce-slow">
+                <span>WORK</span>
+                <span>↓</span>
+            </a>
+
+            <!-- Bottom Right Live FPS / Grid Readout -->
+            <div class="hidden sm:flex pointer-events-auto items-center space-x-2 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+                <span id="grid-stats">GRID 96×54</span>
+                <span>•</span>
+                <button id="quick-studio-btn" class="underline hover:text-stone-700 dark:hover:text-stone-300">TUNE ASCII</button>
+            </div>
+        </footer>
+    </section>
+
+    <!-- SELECTED WORK & EXPERIMENTS SECTION (Below the Fold) -->
+    <section id="work" class="relative z-20 max-w-5xl mx-auto px-6 sm:px-10 py-24 border-t border-stone-200/70 dark:border-stone-800/70">
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-12">
+            <div>
+                <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-pink-600 dark:text-pink-400 mb-2">01 / Indie Apps &amp; Tools</p>
+                <h2 class="text-2xl sm:text-3xl font-normal tracking-tight">Things I've Designed &amp; Built</h2>
+            </div>
+            <p class="font-mono text-xs text-stone-400 mt-2 sm:mt-0">QUÉBEC, CANADA • 2022 — 2026</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Card 1: Lofi Rooms -->
+            <a href="https://heycristobal.com/#projects" target="_blank" rel="noopener" class="group p-6 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/80 dark:border-stone-800 hover:border-pink-400/60 dark:hover:border-pink-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between font-mono text-[11px] text-stone-400 mb-4">
+                        <span>VOXEL SANDBOX</span>
+                        <span class="text-emerald-600 dark:text-emerald-400">● LIVE</span>
+                    </div>
+                    <div class="h-32 mb-5 rounded-xl bg-[#F4F1EA] dark:bg-stone-950 border border-stone-200/60 dark:border-stone-800 flex items-center justify-center overflow-hidden font-mono text-[10px] leading-tight text-pink-600 dark:text-pink-400 text-center p-2">
+                        <pre class="select-none group-hover:scale-105 transition-transform duration-500">
+     .---.   [:::]
+   /     /|  | o |
+  +-----+ |  '---'
+  | [~] | /  (=^･^=)
+  +-----+'   ~~~~~~~</pre>
+                    </div>
+                    <h3 class="text-lg font-medium mb-1.5 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">Lofi Rooms</h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                        Build tiny isometric voxel rooms, switch on the warm lamps, put a record on, and let the cats wander while you unwind.
+                    </p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs font-mono text-stone-500">
+                    <span>Isometric Voxel / Web</span>
+                    <span class="group-hover:translate-x-1 transition-transform">Live Demo ↗</span>
+                </div>
+            </a>
+
+            <!-- Card 2: Lamplight -->
+            <a href="https://heycristobal.com/#projects" target="_blank" rel="noopener" class="group p-6 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/80 dark:border-stone-800 hover:border-amber-500/60 dark:hover:border-amber-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between font-mono text-[11px] text-stone-400 mb-4">
+                        <span>EPUB READER</span>
+                        <span class="text-amber-600 dark:text-amber-400">◐ IN PROGRESS</span>
+                    </div>
+                    <div class="h-32 mb-5 rounded-xl bg-[#F4F1EA] dark:bg-stone-950 border border-stone-200/60 dark:border-stone-800 flex items-center justify-center overflow-hidden font-mono text-[10px] leading-tight text-amber-600 dark:text-amber-400 text-center p-2">
+                        <pre class="select-none group-hover:scale-105 transition-transform duration-500">
+   .---.   .---.
+  / === \ / === \
+ |  ===  |  [•]  |
+ |  ===  |250 wpm|
+  \_____/ \_____/</pre>
+                    </div>
+                    <h3 class="text-lg font-medium mb-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">Lamplight</h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                        A quieter place to read EPUB books—one page or one focused word at a time, with Sun, Lamp, and Moon lighting themes and 100% local storage.
+                    </p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs font-mono text-stone-500">
+                    <span>Calm Software / Capacitor</span>
+                    <span class="group-hover:translate-x-1 transition-transform">Live Demo ↗</span>
+                </div>
+            </a>
+
+            <!-- Card 3: Pomodoro Terrarium & Voxel Garden -->
+            <a href="https://heycristobal.com/#projects" target="_blank" rel="noopener" class="group p-6 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/80 dark:border-stone-800 hover:border-emerald-500/60 dark:hover:border-emerald-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between font-mono text-[11px] text-stone-400 mb-4">
+                        <span>FOCUS &amp; TASKS</span>
+                        <span class="text-emerald-600 dark:text-emerald-400">● LIVE</span>
+                    </div>
+                    <div class="h-32 mb-5 rounded-xl bg-[#F4F1EA] dark:bg-stone-950 border border-stone-200/60 dark:border-stone-800 flex items-center justify-center overflow-hidden font-mono text-[10px] leading-tight text-emerald-700 dark:text-emerald-400 text-center p-2">
+                        <pre class="select-none group-hover:scale-105 transition-transform duration-500">
+     .;:;:.  25:00
+   .:%%%%%%:. |
+  '%%%%%%%%%%'|
+  \===========/
+   '---------'</pre>
+                    </div>
+                    <h3 class="text-lg font-medium mb-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Pomodoro Terrarium &amp; Voxel Garden</h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                        Cozy 3D voxel garden islands that bloom while your focus timer runs or whenever you plant and complete a daily task.
+                    </p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs font-mono text-stone-500">
+                    <span>3D Voxel / JS</span>
+                    <span class="group-hover:translate-x-1 transition-transform">Live Demo ↗</span>
+                </div>
+            </a>
+
+            <!-- Card 4: WordNest -->
+            <a href="https://heycristobal.com/#projects" target="_blank" rel="noopener" class="group p-6 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/80 dark:border-stone-800 hover:border-pink-400/60 dark:hover:border-pink-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between font-mono text-[11px] text-stone-400 mb-4">
+                        <span>LANGUAGE LEARNING</span>
+                        <span class="text-amber-600 dark:text-amber-400">◐ IN PROGRESS</span>
+                    </div>
+                    <h3 class="text-lg font-medium mb-1.5 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">WordNest</h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                        Bite-sized French flashcards with spaced repetition and short, zero-stress study sessions designed for steady daily fluency.
+                    </p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs font-mono text-stone-500">
+                    <span>Spaced Review / EN•FR•ES</span>
+                    <span class="group-hover:translate-x-1 transition-transform">Live Demo ↗</span>
+                </div>
+            </a>
+
+            <!-- Card 5: TwoStoryCaptions -->
+            <a href="https://heycristobal.com/#projects" target="_blank" rel="noopener" class="group p-6 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/80 dark:border-stone-800 hover:border-amber-500/60 dark:hover:border-amber-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between font-mono text-[11px] text-stone-400 mb-4">
+                        <span>CREATOR TOOLING</span>
+                        <span class="text-emerald-600 dark:text-emerald-400">● LIVE</span>
+                    </div>
+                    <h3 class="text-lg font-medium mb-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">TwoStoryCaptions</h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                        Custom content planner and deadpan caption generator built for @TwoStoryTails (400K+ views following Neo, Diego, Ramses &amp; crew across two floors).
+                    </p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs font-mono text-stone-500">
+                    <span>AI Workflows / Social</span>
+                    <span class="group-hover:translate-x-1 transition-transform">Live Demo ↗</span>
+                </div>
+            </a>
+
+            <!-- Card 6: Media & Data Operations -->
+            <a href="https://heycristobal.com/#work" target="_blank" rel="noopener" class="group p-6 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/80 dark:border-stone-800 hover:border-emerald-500/60 dark:hover:border-emerald-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between font-mono text-[11px] text-stone-400 mb-4">
+                        <span>STATISTICS CANADA</span>
+                        <span>2020 — 2026</span>
+                    </div>
+                    <h3 class="text-lg font-medium mb-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Public Data &amp; Media Systems</h3>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                        Building internal KPI dashboards, leading CPI/LFS/GDP media lockups, resolving 650+ national journalist inquiries, and scaling channels to 600K+ followers.
+                    </p>
+                </div>
+                <div class="mt-6 pt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs font-mono text-stone-500">
+                    <span>Dashboards / Comms Ops</span>
+                    <span class="group-hover:translate-x-1 transition-transform">Case Studies ↗</span>
+                </div>
+            </a>
+        </div>
+
+        <!-- Writing / Notes Section -->
+        <div id="writing" class="mt-24 pt-16 border-t border-stone-200/70 dark:border-stone-800/70">
+            <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400 mb-2">02 / Technical &amp; Digital Writing</p>
+            <h2 class="text-2xl font-normal tracking-tight mb-8">Making Technical Things Clear for Users &amp; the Public</h2>
+            <div class="divide-y divide-stone-200/70 dark:divide-stone-800/70 font-sans">
+                <a href="https://heycristobal.com/#writing" target="_blank" rel="noopener" class="py-4 flex items-center justify-between group">
+                    <span class="text-sm sm:text-base font-medium group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">Lamplight User Guide: Importing EPUBs, 250 WPM Focus Mode &amp; Local-First Storage</span>
+                    <span class="font-mono text-xs text-stone-400 shrink-0 ml-4">USER GUIDE ↗</span>
+                </a>
+                <a href="https://heycristobal.com/#writing" target="_blank" rel="noopener" class="py-4 flex items-center justify-between group">
+                    <span class="text-sm sm:text-base font-medium group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">Who TwoStoryTails Is For: 4 Audience Personas, Voice Rules &amp; One Cat Moment Four Ways</span>
+                    <span class="font-mono text-xs text-stone-400 shrink-0 ml-4">VOICE BRIEF ↗</span>
+                </a>
+                <a href="https://heycristobal.com/#writing" target="_blank" rel="noopener" class="py-4 flex items-center justify-between group">
+                    <span class="text-sm sm:text-base font-medium group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">From Expert Draft to Media Reply: Explaining Base-Year CPI Effects on Deadline</span>
+                    <span class="font-mono text-xs text-stone-400 shrink-0 ml-4">PLAIN LANGUAGE ↗</span>
+                </a>
+                <a href="https://heycristobal.com/#writing" target="_blank" rel="noopener" class="py-4 flex items-center justify-between group">
+                    <span class="text-sm sm:text-base font-medium group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">Putting Economists in Front of Reddit: Live AMAs for the Census &amp; Consumer Price Index</span>
+                    <span class="font-mono text-xs text-stone-400 shrink-0 ml-4">CAMPAIGN ↗</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- INTERACTIVE ASCII BOTANICAL & KOI ENGINE -->
+    <script>
+        (function () {
+            const canvas = document.getElementById('ascii-canvas');
+            const ctx = canvas.getContext('2d');
+            const gridStats = document.getElementById('grid-stats');
+
+            // Configuration & State
+            const CELL_SIZE = 15; // Matches the chunky pixel-block + character look in the screenshot
+            let cols = 0;
+            let rows = 0;
+            let time = 0;
+            let isDark = false;
+            let currentSeason = 'lotus';
+            let currentCharset = 'classic';
+            let targetKoiCount = 3;
+
+            // Character dictionaries ordered from sparse to dense
+            const CHARSETS = {
+                classic:  ['.', ':', ';', '-', '=', '+', 't', 'i', 'l', '|', '/', '\\', 'X', 'S', '%', '8', '#', '@'],
+                katakana: ['.', '·', 'ו', 'ノ', 'イ', 'ロ', 'ハ', 'ニ', 'ホ', 'ヘ', 'ト', 'チ', 'リ', 'ヌ', 'ル', 'ヲ', 'カ', 'キ'],
+                binary:   ['.', ':', ';', '-', '+', '0', '1', '0', '1', '0', '1', '#', '@']
+            };
+
+            // Color Palettes matching the Harika Bommu / @stackedlol aesthetic
+            const PALETTES = {
+                lotus: {
+                    bgLight: '#FAF9F5',
+                    bgDark: '#0D1017',
+                    gridLight: 'rgba(215, 212, 204, 0.35)',
+                    gridDark: 'rgba(38, 45, 61, 0.38)',
+                    // Multi-tone botanical blocks (cell background + character foreground)
+                    petalOuter:  { bg: '#F4A9C7', fg: '#9E3B66', bgDark: '#521E36', fgDark: '#F4A9C7' },
+                    petalMid:    { bg: '#EE85B5', fg: '#7A2048', bgDark: '#7A234B', fgDark: '#FFD1E6' },
+                    petalCore:   { bg: '#F5B841', fg: '#8C4A00', bgDark: '#8F5B0D', fgDark: '#FFE599' },
+                    padLight:    { bg: '#8AB861', fg: '#2D4D14', bgDark: '#26451B', fgDark: '#A3D977' },
+                    padMid:      { bg: '#689F38', fg: '#1E380B', bgDark: '#1C3613', fgDark: '#86C257' },
+                    padDeep:     { bg: '#4B7F28', fg: '#132606', bgDark: '#14280D', fgDark: '#68A33E' },
+                    stem:        { bg: '#A6754B', fg: '#4A2B13', bgDark: '#4D331E', fgDark: '#D4A373' },
+                    stemDark:    { bg: '#8C5830', fg: '#381D0A', bgDark: '#382314', fgDark: '#B5835A' },
+                    koiBody:     { bg: '#F26B4E', fg: '#7C1D0B', bgDark: '#8A2B19', fgDark: '#FFB4A2' },
+                    koiFin:      { bg: '#F9C784', fg: '#874D00', bgDark: '#694518', fgDark: '#FFE1B5' },
+                    ripple:      { bg: '#E6ECEF', fg: '#607D8B', bgDark: '#1B2838', fgDark: '#6488EA' }
+                },
+                sakura: {
+                    bgLight: '#FDF8F8',
+                    bgDark: '#130D14',
+                    gridLight: 'rgba(228, 210, 215, 0.35)',
+                    gridDark: 'rgba(55, 35, 55, 0.35)',
+                    petalOuter:  { bg: '#FCD5CE', fg: '#9D4452', bgDark: '#592332', fgDark: '#FCD5CE' },
+                    petalMid:    { bg: '#F8AD9D', fg: '#802F3E', bgDark: '#752F41', fgDark: '#FFE5EC' },
+                    petalCore:   { bg: '#FFE5D9', fg: '#9C4100', bgDark: '#945227', fgDark: '#FFE8D6' },
+                    padLight:    { bg: '#A3B18A', fg: '#344E41', bgDark: '#2A3B2C', fgDark: '#B7C99B' },
+                    padMid:      { bg: '#588157', fg: '#1B2E1E', bgDark: '#1F2E21', fgDark: '#84A98C' },
+                    padDeep:     { bg: '#3A5A40', fg: '#101F14', bgDark: '#152117', fgDark: '#6B9080' },
+                    stem:        { bg: '#9C6644', fg: '#422512', bgDark: '#4A2C1D', fgDark: '#DDA15E' },
+                    stemDark:    { bg: '#7F5539', fg: '#2E180B', bgDark: '#361F14', fgDark: '#BC6C25' },
+                    koiBody:     { bg: '#E56B6F', fg: '#6B141A', bgDark: '#7D2930', fgDark: '#FFCAD4' },
+                    koiFin:      { bg: '#EAAC8B', fg: '#6E3619', bgDark: '#593A2B', fgDark: '#F4ACB7' },
+                    ripple:      { bg: '#F4E4E9', fg: '#9D6B7D', bgDark: '#291B2C', fgDark: '#B5838D' }
+                },
+                cyber: {
+                    bgLight: '#F2F7F6',
+                    bgDark: '#070F12',
+                    gridLight: 'rgba(180, 210, 205, 0.35)',
+                    gridDark: 'rgba(20, 60, 68, 0.35)',
+                    petalOuter:  { bg: '#72EFDD', fg: '#005F56', bgDark: '#0B4F4A', fgDark: '#72EFDD' },
+                    petalMid:    { bg: '#48BFE3', fg: '#003D5B', bgDark: '#124059', fgDark: '#90E0EF' },
+                    petalCore:   { bg: '#F72585', fg: '#590027', bgDark: '#7209B7', fgDark: '#FF99C8' },
+                    padLight:    { bg: '#80FFDB', fg: '#084C3E', bgDark: '#0F382F', fgDark: '#64DFDF' },
+                    padMid:      { bg: '#52B788', fg: '#083321', bgDark: '#0A2E23', fgDark: '#52B788' },
+                    padDeep:     { bg: '#2D6A4F', fg: '#041E13', bgDark: '#061F17', fgDark: '#40916C' },
+                    stem:        { bg: '#7400B8', fg: '#240046', bgDark: '#240046', fgDark: '#C77DFF' },
+                    stemDark:    { bg: '#5390D9', fg: '#03045E', bgDark: '#1A1B4B', fgDark: '#4EA8DE' },
+                    koiBody:     { bg: '#FF9E00', fg: '#5C3300', bgDark: '#7A3E00', fgDark: '#FFDD00' },
+                    koiFin:      { bg: '#FF007F', fg: '#59002C', bgDark: '#590D22', fgDark: '#FF758F' },
+                    ripple:      { bg: '#D8F3DC', fg: '#2D6A4F', bgDark: '#0B2B36', fgDark: '#00F5D4' }
+                }
+            };
+
+            // Scene Entities
+            let floraElements = [];
+            let koiFish = [];
+            let ripples = [];
+            let floatingPetals = [];
+            let pointer = { x: -9999, y: -9999, vx: 0, vy: 0, active: false };
+
+            // Deterministic pseudo-random helper for cell character selection
+            function cellHash(x, y, seed = 0) {
+                let h = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0;
+                h = (h ^ (h >> 13)) * 1274126177;
+                return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+            }
+
+            // Build Botanical Layout (Framing the left and right sides like Harika Bommu's screenshot)
+            function buildBotanicalGarden() {
+                floraElements = [];
+
+                // LEFT CLUSTER: Tall blooming lotus + stems + round lily pads
+                // Large Left Lotus Flower (Top-Left)
+                floraElements.push({
+                    type: 'lotus',
+                    nx: 0.14, ny: 0.28,
+                    rx: 7.5, ry: 8.5,
+                    phase: 0.2,
+                    scale: 1.0
+                });
+
+                // Left Stem & Woody Root Cluster (Middle-Left)
+                floraElements.push({
+                    type: 'stemCluster',
+                    nx: 0.10, ny: 0.56,
+                    rx: 6.2, ry: 12.5,
+                    phase: 1.1
+                });
+
+                // Lower Left Blooming Lotus Bud
+                floraElements.push({
+                    type: 'lotus',
+                    nx: 0.15, ny: 0.80,
+                    rx: 6.5, ry: 7.0,
+                    phase: 2.0,
+                    scale: 1.0
+                });
+
+                // Left-Inner Top Lily Pad
+                floraElements.push({
+                    type: 'lilypad',
+                    nx: 0.30, ny: 0.23,
+                    r: 5.2,
+                    notchAngle: 0.6,
+                    phase: 0.7
+                });
+
+                // Left-Inner Lower Large Lily Pad
+                floraElements.push({
+                    type: 'lilypad',
+                    nx: 0.31, ny: 0.75,
+                    r: 6.8,
+                    notchAngle: 2.8,
+                    phase: 1.9
+                });
+
+                // RIGHT CLUSTER: Upper Lotus & Pad + Lower Right Lotus & Pads
+                // Top-Right Lotus with Leaf Halo
+                floraElements.push({
+                    type: 'lilypad',
+                    nx: 0.85, ny: 0.25,
+                    r: 7.2,
+                    notchAngle: -1.2,
+                    phase: 0.4
+                });
+                floraElements.push({
+                    type: 'lotus',
+                    nx: 0.87, ny: 0.22,
+                    rx: 6.8, ry: 6.5,
+                    phase: 1.5,
+                    scale: 1.0
+                });
+
+                // Right-Inner Mid Lily Pad
+                floraElements.push({
+                    type: 'lilypad',
+                    nx: 0.69, ny: 0.63,
+                    r: 4.8,
+                    notchAngle: 3.5,
+                    phase: 2.4
+                });
+
+                // Right-Inner Bottom Lily Pad
+                floraElements.push({
+                    type: 'lilypad',
+                    nx: 0.70, ny: 0.88,
+                    r: 6.2,
+                    notchAngle: -0.5,
+                    phase: 3.1
+                });
+
+                // Bottom-Right Full Lotus Bloom
+                floraElements.push({
+                    type: 'lotus',
+                    nx: 0.84, ny: 0.76,
+                    rx: 8.2, ry: 8.2,
+                    phase: 0.9,
+                    scale: 1.0
+                });
+            }
+
+            // Spawn autonomous ASCII Koi Fish that swim around the center text
+            function initKoiFish(count) {
+                koiFish = [];
+                for (let i = 0; i < count; i++) {
+                    koiFish.push({
+                        x: Math.random() * cols,
+                        y: Math.random() * rows,
+                        angle: Math.random() * Math.PI * 2,
+                        speed: (0.14 + Math.random() * 0.08) * 0.64,
+                        turnSpeed: (0.02 + Math.random() * 0.02) * 0.64,
+                        tailPhase: Math.random() * 10,
+                        length: 7 + (i % 2) * 2
+                    });
+                }
+            }
+
+            // Scatter drifting petals across the canvas
+            function spawnPetals(count = 14) {
+                for (let i = 0; i < count; i++) {
+                    floatingPetals.push({
+                        x: Math.random() * cols,
+                        y: Math.random() * rows,
+                        vx: (Math.random() - 0.3) * 0.048,
+                        vy: (Math.random() - 0.2) * 0.04,
+                        life: 1.0
+                    });
+                }
+            }
+
+            function resizeCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                cols = Math.ceil(width / CELL_SIZE);
+                rows = Math.ceil(height / CELL_SIZE);
+                if (gridStats) {
+                    gridStats.textContent = `GRID ${cols}×${rows}`;
+                }
+            }
+
+            // Evaluate what botanical / pond element occupies cell (cx, cy)
+            function sampleCell(cx, cy, t, palette) {
+                // Gentle wind sway
+                const swayX = Math.sin(t * 1.1 + cy * 0.09) * 0.45;
+                const swayY = Math.cos(t * 0.9 + cx * 0.08) * 0.35;
+
+                // 1. Check user water ripples first for displacement
+                let rippleBoost = 0;
+                for (let r = 0; r < ripples.length; r++) {
+                    const rip = ripples[r];
+                    const dist = Math.hypot(cx - rip.x, cy - rip.y);
+                    const ring = Math.abs(dist - rip.radius);
+                    if (ring < 1.35) {
+                        rippleBoost = Math.max(rippleBoost, (1 - ring / 1.35) * rip.alpha);
+                    }
+                }
+
+                // 2. Check Botanical Flora (Lotus, Lily Pads, Stems)
+                // Iterate in reverse so top flowers sit above lily pads
+                for (let i = floraElements.length - 1; i >= 0; i--) {
+                    const el = floraElements[i];
+                    const ex = el.nx * cols + swayX;
+                    const ey = el.ny * rows + swayY;
+                    const growScale = el.scale !== undefined ? el.scale : 1.0;
+
+                    if (el.type === 'lotus') {
+                        const dx = (cx - ex) / (el.rx * growScale);
+                        const dy = (cy - ey) / (el.ry * growScale);
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < 1.18) {
+                            const angle = Math.atan2(dy, dx);
+                            // Multi-layered lotus petals using polar rose harmonic
+                            const petalWave = 0.82 + 0.22 * Math.cos(angle * 7 + el.phase) + 0.12 * Math.sin(angle * 3 - t * 0.8);
+                            const hash = cellHash(cx, cy, i);
+
+                            // Sparse radiating ASCII spikes at outer tip of petals (like the `\`, `/`, `:` in screenshot)
+                            if (dist >= petalWave && dist < petalWave + 0.22 && hash > 0.58) {
+                                return {
+                                    style: palette.petalOuter,
+                                    density: 0.25,
+                                    fillBg: false, // Floating colored character on bare background
+                                    angleHint: angle
+                                };
+                            }
+
+                            if (dist < petalWave) {
+                                // Golden stamen center
+                                if (dist < 0.28) {
+                                    return { style: palette.petalCore, density: 0.85, fillBg: true };
+                                }
+                                // Mid rich pink petals
+                                if (dist < 0.62) {
+                                    return {
+                                        style: hash > 0.35 ? palette.petalMid : palette.petalOuter,
+                                        density: 0.65,
+                                        fillBg: true
+                                    };
+                                }
+                                // Outer soft pink petals with occasional green sepal accents
+                                const isSepal = (Math.sin(angle * 5) > 0.78 && dist > 0.72);
+                                return {
+                                    style: isSepal ? palette.padLight : palette.petalOuter,
+                                    density: 0.45,
+                                    fillBg: true
+                                };
+                            }
+                        }
+                    } else if (el.type === 'lilypad') {
+                        const dx = cx - ex;
+                        const dy = cy - ey;
+                        const dist = Math.hypot(dx, dy);
+                        const radius = el.r * (0.92 + 0.08 * Math.sin(cx * 0.4 + cy * 0.4));
+
+                        if (dist <= radius) {
+                            const angle = Math.atan2(dy, dx);
+                            // Classic V-shaped notch in lily pad
+                            let angleDiff = Math.abs(Math.atan2(Math.sin(angle - el.notchAngle), Math.cos(angle - el.notchAngle)));
+                            if (angleDiff < 0.32 && dist > radius * 0.25) {
+                                continue;
+                            }
+                            const normDist = dist / radius;
+                            const hash = cellHash(cx, cy, i + 10);
+                            if (normDist < 0.35) {
+                                return { style: palette.padDeep, density: 0.9, fillBg: true };
+                            } else if (normDist < 0.72) {
+                                return { style: hash > 0.4 ? palette.padMid : palette.padLight, density: 0.7, fillBg: true };
+                            } else {
+                                return { style: palette.padLight, density: 0.5, fillBg: true };
+                            }
+                        }
+                    } else if (el.type === 'stemCluster') {
+                        // Organic curved woody stems & foliage on the left border
+                        const curveOffset = Math.sin((cy - ey) * 0.18 + t * 0.6) * 2.2;
+                        const dx = (cx - (ex + curveOffset)) / el.rx;
+                        const dy = (cy - ey) / el.ry;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < 1.0) {
+                            const hash = cellHash(cx, cy, 77);
+                            if (dx < -0.15) {
+                                return { style: hash > 0.4 ? palette.padDeep : palette.padMid, density: 0.82, fillBg: true };
+                            } else if (dx < 0.35) {
+                                return { style: hash > 0.5 ? palette.stem : palette.stemDark, density: 0.78, fillBg: true };
+                            } else if (hash > 0.35) {
+                                return { style: palette.petalOuter, density: 0.5, fillBg: true };
+                            }
+                        }
+                    }
+                }
+
+                // 3. Check Swimming ASCII Koi Fish
+                for (let k = 0; k < koiFish.length; k++) {
+                    const fish = koiFish[k];
+                    const cosA = Math.cos(fish.angle);
+                    const sinA = Math.sin(fish.angle);
+                    const relX = cx - fish.x;
+                    const relY = cy - fish.y;
+
+                    // Rotate into fish local coordinates (alongX = head-to-tail, perpY = width)
+                    const along = relX * cosA + relY * sinA;
+                    const perp = -relX * sinA + relY * cosA;
+
+                    if (along > -fish.length && along < 2.2) {
+                        const tailSway = Math.sin(t * 4.8 + fish.tailPhase + along * 0.7) * (along < -1 ? 0.85 : 0.2);
+                        const bodyWidth = along >= 0
+                            ? 1.55 * (1 - along / 2.4)
+                            : 1.55 * (1 - Math.abs(along) / (fish.length + 1));
+
+                        if (Math.abs(perp - tailSway) <= bodyWidth) {
+                            const isHeadOrBack = Math.abs(perp - tailSway) < bodyWidth * 0.58;
+                            return {
+                                style: isHeadOrBack ? palette.koiBody : palette.koiFin,
+                                density: isHeadOrBack ? 0.85 : 0.45,
+                                fillBg: true
+                            };
+                        }
+                    }
+                }
+
+                // 4. Check Drifting Petals
+                for (let p = 0; p < floatingPetals.length; p++) {
+                    const pt = floatingPetals[p];
+                    if (Math.abs(cx - Math.round(pt.x)) <= 0 && Math.abs(cy - Math.round(pt.y)) <= 0) {
+                        return {
+                            style: palette.petalOuter,
+                            density: 0.6,
+                            fillBg: true
+                        };
+                    }
+                }
+
+                // 5. Check Active Water Ripple Ring
+                if (rippleBoost > 0.15) {
+                    return {
+                        style: palette.ripple,
+                        density: Math.min(0.9, rippleBoost),
+                        fillBg: rippleBoost > 0.45
+                    };
+                }
+
+                return null;
+            }
+
+            // Main Render & Physics Loop
+            function render() {
+                time += 0.02;
+                const palette = PALETTES[currentSeason];
+                const chars = CHARSETS[currentCharset];
+
+                // Clear canvas with theme background
+                ctx.fillStyle = isDark ? palette.bgDark : palette.bgLight;
+                ctx.fillRect(0, 0, cols * CELL_SIZE, rows * CELL_SIZE);
+
+                // Draw subtle architectural grid lines (like the screenshot background)
+                ctx.strokeStyle = isDark ? palette.gridDark : palette.gridLight;
+                ctx.lineWidth = 0.6;
+                ctx.beginPath();
+                for (let x = 0; x <= cols; x++) {
+                    ctx.moveTo(x * CELL_SIZE, 0);
+                    ctx.lineTo(x * CELL_SIZE, rows * CELL_SIZE);
+                }
+                for (let y = 0; y <= rows; y++) {
+                    ctx.moveTo(0, y * CELL_SIZE);
+                    ctx.lineTo(cols * CELL_SIZE, y * CELL_SIZE);
+                }
+                ctx.stroke();
+
+                // Update growing user-planted lotuses
+                for (let i = 0; i < floraElements.length; i++) {
+                    if (floraElements[i].scale !== undefined && floraElements[i].scale < 1) {
+                        floraElements[i].scale = Math.min(1, floraElements[i].scale + 0.032);
+                    }
+                }
+
+                // Update Koi Fish movement (gently orbit around the typography in the center)
+                for (let k = 0; k < koiFish.length; k++) {
+                    const fish = koiFish[k];
+                    fish.x += Math.cos(fish.angle) * fish.speed;
+                    fish.y += Math.sin(fish.angle) * fish.speed;
+
+                    // Softly steer away from the central text box so typography stays crisp
+                    const centerDistX = fish.x - cols * 0.5;
+                    const centerDistY = fish.y - rows * 0.5;
+                    if (Math.abs(centerDistX) < cols * 0.22 && Math.abs(centerDistY) < rows * 0.20) {
+                        const desired = Math.atan2(centerDistY, centerDistX);
+                        fish.angle += Math.sin(desired - fish.angle) * 0.032;
+                    }
+
+                    // Gentle wandering
+                    fish.angle += Math.sin(time * 0.72 + k * 2.1) * 0.0096;
+
+                    // Wrap around screen edges with padding
+                    const pad = 8;
+                    if (fish.x < -pad) fish.x = cols + pad;
+                    if (fish.x > cols + pad) fish.x = -pad;
+                    if (fish.y < -pad) fish.y = rows + pad;
+                    if (fish.y > rows + pad) fish.y = -pad;
+                }
+
+                // Update Ripples
+                for (let r = ripples.length - 1; r >= 0; r--) {
+                    ripples[r].radius += 0.176;
+                    ripples[r].alpha -= 0.0112;
+                    if (ripples[r].alpha <= 0) {
+                        ripples.splice(r, 1);
+                    }
+                }
+
+                // Update Floating Petals
+                for (let p = floatingPetals.length - 1; p >= 0; p--) {
+                    const pt = floatingPetals[p];
+                    pt.x += pt.vx + Math.sin(time + p) * 0.016;
+                    pt.y += pt.vy;
+                    if (pt.x < 0) pt.x = cols;
+                    if (pt.x > cols) pt.x = 0;
+                    if (pt.y > rows) pt.y = 0;
+                }
+
+                // Configure font for ASCII characters
+                ctx.font = `600 ${Math.floor(CELL_SIZE * 0.72)}px "JetBrains Mono", monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Render Grid Cells
+                for (let cy = 0; cy < rows; cy++) {
+                    for (let cx = 0; cx < cols; cx++) {
+                        const cell = sampleCell(cx, cy, time, palette);
+                        const px = cx * CELL_SIZE;
+                        const py = cy * CELL_SIZE;
+
+                        if (cell) {
+                            // Draw colored tile block
+                            if (cell.fillBg) {
+                                ctx.fillStyle = isDark ? cell.style.bgDark : cell.style.bg;
+                                ctx.fillRect(px + 0.5, py + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
+                            }
+
+                            // Choose ASCII character from density + slow shimmer
+                            const shimmer = Math.floor(cellHash(cx, cy, Math.floor(time * 2.5)) * 3);
+                            const baseIdx = Math.floor(cell.density * (chars.length - 1));
+                            const charIdx = Math.max(0, Math.min(chars.length - 1, baseIdx + (shimmer - 1)));
+                            const ch = chars[charIdx];
+
+                            ctx.fillStyle = isDark ? cell.style.fgDark : cell.style.fg;
+                            ctx.fillText(ch, px + CELL_SIZE / 2, py + CELL_SIZE / 2 + 0.5);
+                        } else {
+                            // Ambient sparse water shimmer dots & dashes in background (like the screenshot)
+                            const waterNoise = Math.sin(cx * 0.25 + time * 0.7) * Math.cos(cy * 0.3 - time * 0.5);
+                            const h = cellHash(cx, cy, 101);
+                            if (waterNoise > 0.78 && h > 0.84) {
+                                ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.25)' : 'rgba(120, 113, 108, 0.32)';
+                                const ambientChar = h > 0.93 ? '-' : '.';
+                                ctx.fillText(ambientChar, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+                            }
+                        }
+                    }
+                }
+
+                requestAnimationFrame(render);
+            }
+
+            // Mouse / Touch Interaction for Water Ripples & Planting Lotuses
+            let lastRippleTime = 0;
+            window.addEventListener('pointermove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const gx = (e.clientX - rect.left) / CELL_SIZE;
+                const gy = (e.clientY - rect.top) / CELL_SIZE;
+                pointer.x = gx;
+                pointer.y = gy;
+
+                const now = performance.now();
+                if (now - lastRippleTime > 75 && gy >= 0 && gy <= rows) {
+                    ripples.push({ x: gx, y: gy, radius: 0.6, alpha: 0.75 });
+                    lastRippleTime = now;
+                }
+            });
+
+            // Click on canvas to plant a new blooming ASCII lotus
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const gx = (e.clientX - rect.left) / CELL_SIZE;
+                const gy = (e.clientY - rect.top) / CELL_SIZE;
+
+                // Create a ripple burst
+                ripples.push({ x: gx, y: gy, radius: 0.5, alpha: 1.0 });
+
+                // Plant a lotus or lilypad where clicked
+                const nx = gx / cols;
+                const ny = gy / rows;
+                floraElements.push({
+                    type: Math.random() > 0.28 ? 'lotus' : 'lilypad',
+                    nx: nx,
+                    ny: ny,
+                    rx: 5.5 + Math.random() * 2.5,
+                    ry: 5.5 + Math.random() * 2.5,
+                    r: 5.2 + Math.random() * 1.8,
+                    notchAngle: Math.random() * Math.PI * 2,
+                    phase: Math.random() * Math.PI * 2,
+                    scale: 0.05 // Animates open smoothly
+                });
+
+                // Keep flora count reasonable
+                if (floraElements.length > 22) {
+                    floraElements.shift();
+                }
+            });
+
+            // UI Controls Wiring
+            const themeToggle = document.getElementById('theme-toggle');
+            themeToggle.addEventListener('click', () => {
+                isDark = !isDark;
+                document.documentElement.classList.toggle('dark', isDark);
+            });
+
+            // Email Copy Toast
+            const copyEmailBtn = document.getElementById('copy-email-btn');
+            const copyToast = document.getElementById('copy-toast');
+            if (copyEmailBtn) {
+                copyEmailBtn.addEventListener('click', () => {
+                    const tempInput = document.createElement('textarea');
+                    tempInput.value = 'workwithcristobal@gmail.com';
+                    document.body.appendChild(tempInput);
+                    tempInput.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(tempInput);
+
+                    copyToast.classList.remove('opacity-0');
+                    setTimeout(() => copyToast.classList.add('opacity-0'), 1800);
+                });
+            }
+
+            // Studio Drawer Toggle
+            const vibeDrawer = document.getElementById('vibe-drawer');
+            const toggleBtns = [
+                document.getElementById('toggle-playground-btn'),
+                document.getElementById('monogram-btn'),
+                document.getElementById('quick-studio-btn')
+            ];
+            const closeDrawerBtn = document.getElementById('close-drawer');
+
+            function toggleDrawer() {
+                const isHidden = vibeDrawer.classList.contains('opacity-0');
+                if (isHidden) {
+                    vibeDrawer.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-2');
+                } else {
+                    vibeDrawer.classList.add('opacity-0', 'pointer-events-none', 'translate-y-2');
+                }
+            }
+            toggleBtns.forEach(btn => btn && btn.addEventListener('click', toggleDrawer));
+            if (closeDrawerBtn) closeDrawerBtn.addEventListener('click', toggleDrawer);
+
+            // Season Buttons
+            document.querySelectorAll('.season-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentSeason = btn.dataset.season;
+                    document.querySelectorAll('.season-btn').forEach(b => {
+                        b.className = 'season-btn px-2 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border border-transparent hover:border-stone-300 transition-all';
+                    });
+                    btn.className = 'season-btn px-2 py-1.5 rounded-lg bg-pink-100 dark:bg-pink-950/70 text-pink-900 dark:text-pink-200 border border-pink-300 dark:border-pink-700 transition-all';
+                });
+            });
+
+            // Charset Buttons
+            document.querySelectorAll('.charset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentCharset = btn.dataset.charset;
+                    document.querySelectorAll('.charset-btn').forEach(b => {
+                        b.className = 'charset-btn px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 transition-all';
+                    });
+                    btn.className = 'charset-btn px-2 py-1 rounded-lg bg-stone-800 text-white dark:bg-stone-100 dark:text-stone-900 transition-all';
+                });
+            });
+
+            // Koi Count Slider
+            const koiSlider = document.getElementById('koi-slider');
+            const koiCountLabel = document.getElementById('koi-count-label');
+            koiSlider.addEventListener('input', (e) => {
+                targetKoiCount = parseInt(e.target.value, 10);
+                koiCountLabel.textContent = `${targetKoiCount} Fish`;
+                initKoiFish(targetKoiCount);
+            });
+
+            // Scatter Petals & Regrow Buttons
+            document.getElementById('feed-koi-btn').addEventListener('click', () => {
+                spawnPetals(18);
+                ripples.push({ x: cols * 0.5, y: rows * 0.5, radius: 1, alpha: 0.9 });
+            });
+
+            document.getElementById('regrow-btn').addEventListener('click', () => {
+                buildBotanicalGarden();
+                floraElements.forEach(el => {
+                    el.nx += (Math.random() - 0.5) * 0.04;
+                    el.ny += (Math.random() - 0.5) * 0.04;
+                    el.scale = 0.1;
+                });
+            });
+
+            // Initialize on Load
+            window.addEventListener('resize', resizeCanvas);
+            window.onload = function () {
+                resizeCanvas();
+                buildBotanicalGarden();
+                initKoiFish(targetKoiCount);
+                spawnPetals(10);
+                render();
+            };
+        })();
+    </script>
+</body>
+</html>
