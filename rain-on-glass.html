@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rain on Glass</title>
+<style>
+  :root{
+    --amber:#E8873A;
+    --ink:#E6E3EE;
+    --dim:#9C97AC;
+    --bar:rgba(14,13,22,.6);
+    --line:rgba(255,255,255,.09);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0b0c12;overflow:hidden}
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;touch-action:none;cursor:grab}
+  canvas.wiping{cursor:grabbing}
+
+  .bar{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px 14px;
+    padding:7px 10px 7px 16px;border-radius:999px;
+    background:var(--bar);border:1px solid var(--line);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font:12px/1 "Space Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    color:var(--ink);opacity:.74;transition:opacity .4s ease;
+    max-width:calc(100vw - 32px);user-select:none;-webkit-user-select:none;
+  }
+  .bar:hover,.bar:focus-within{opacity:1}
+
+  .ctl{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .lbl{color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+  input[type=range]{width:84px;accent-color:var(--amber);cursor:pointer;margin:0}
+  output{min-width:4.5ch;color:var(--amber);font-variant-numeric:tabular-nums}
+
+  .seg{display:flex;gap:2px;padding-left:12px;border-left:1px solid var(--line)}
+  button{
+    font:inherit;color:var(--dim);background:transparent;border:0;
+    padding:6px 10px;border-radius:999px;cursor:pointer;transition:color .2s,background .2s;
+  }
+  button:hover{color:var(--ink)}
+  .seg button[aria-pressed="true"]{background:var(--amber);color:#170c03}
+  .act{border:1px solid rgba(232,135,58,.45);color:var(--amber)}
+  .act[aria-pressed="true"]{background:rgba(232,135,58,.14)}
+  #pause{min-width:9ch}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  @media (max-width:700px){
+    .bar{border-radius:18px;bottom:10px;padding:8px 10px;gap:8px 10px}
+    .seg{border-left:0;padding-left:0}
+    input[type=range]{width:72px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    #pause{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="glass" role="img" aria-label="A rainy window: fog clouds the glass, drops run down in trails and briefly reveal a softly lit scene behind it. Drag to wipe the glass."></canvas>
+
+<div class="bar" role="toolbar" aria-label="Rain controls">
+  <label class="ctl">
+    <span class="lbl">Rain</span>
+    <input id="rain" type="range" min="0" max="3" step="0.1" value="1" aria-label="Rain amount">
+    <output id="rainOut" for="rain">1.0×</output>
+  </label>
+  <label class="ctl">
+    <span class="lbl">Fog</span>
+    <input id="fogc" type="range" min="0" max="2" step="0.1" value="1" aria-label="Re-fog speed">
+    <output id="fogOut" for="fogc">1.0×</output>
+  </label>
+  <div class="seg" role="group" aria-label="Scene">
+    <button data-scene="garden" aria-pressed="true">Garden Dusk</button>
+    <button data-scene="city" aria-pressed="false">City Night</button>
+    <button data-scene="pond" aria-pressed="false">Pond</button>
+  </div>
+  <button id="clear" class="act">Clear Glass</button>
+  <button id="pause" class="act" aria-pressed="false" title="Pause (Space)">❚❚ Pause</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- constants ----------
+  const CW = 10, CH = 15;
+  const FONT = '12px "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+  const DROP_FONT = 'bold 13px "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  const FOG_RGB = [185, 180, 199];       // #B9B4C7
+  const DROP_COLOR = '#E8F2F5';
+  const TICK = 1 / 24;                   // drop simulation step
+  const REFOG = 0.02;                    // fog per second at 1x
+  const IL = 8;                          // influence levels per palette colour
+  const FL = 6;                          // fog levels (0 = sharp, 1..5 = misting)
+  const OL = 6;                          // opaque-fog alpha levels
+
+  // blob groups: n, radius range (in cells), colour, char, strength, x-stretch, y band
+  const SCENES = {
+    garden: {
+      base: '#12240F',
+      groups: [
+        { n: 7,  r: [9, 16], color: '#3F7A34', ch: '+', s: 0.55, sx: 1.4, y: [0.35, 1.0] },   // foliage
+        { n: 5,  r: [5, 8],  color: '#F2A541', ch: 'o', s: 1.0,  sx: 1.0, y: [0.2, 0.75] },   // lanterns
+        { n: 4,  r: [4, 7],  color: '#E8798F', ch: '*', s: 0.9,  sx: 1.1, y: [0.3, 0.9] },    // roses
+        { n: 16, r: [1.5, 2.6], color: '#FFD27A', ch: '*', s: 1.0, sx: 1.0, y: [0.05, 0.85] }, // fireflies
+      ],
+    },
+    city: {
+      base: '#101426',
+      groups: [
+        { n: 26, r: [2, 4],  color: '#DDE6FF', ch: '#', s: 0.9,  sx: 1.2, y: [0.15, 0.8] },   // windows
+        { n: 8,  r: [3, 6],  color: '#F2A541', ch: '+', s: 1.0,  sx: 2.0, y: [0.3, 0.95] },   // amber signs / street
+        { n: 6,  r: [2.5, 5], color: '#E8434A', ch: '*', s: 1.0, sx: 1.6, y: [0.2, 0.85] },   // red neon
+        { n: 3,  r: [12, 18], color: '#2A3A7A', ch: '+', s: 0.5, sx: 1.6, y: [0.0, 0.6] },    // sky glow
+      ],
+    },
+    pond: {
+      base: '#0A2426',
+      groups: [
+        { n: 6,  r: [10, 16], color: '#3E9C8C', ch: '~', s: 0.55, sx: 2.4, y: [0.35, 1.0] },  // water
+        { n: 7,  r: [3, 7],  color: '#8CF0CF', ch: '~', s: 0.95, sx: 2.2, y: [0.4, 1.0] },    // mint ripples
+        { n: 5,  r: [2.5, 5], color: '#F2DC8C', ch: '*', s: 1.0, sx: 1.0, y: [0.1, 0.9] },    // gold lights
+        { n: 6,  r: [2, 4],  color: '#B8F5DE', ch: '+', s: 0.8,  sx: 1.0, y: [0.0, 0.5] },    // reeds / glints
+      ],
+    },
+  };
+
+  // ---------- helpers ----------
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const rgb = c => `rgb(${Math.min(255, c[0]) | 0},${Math.min(255, c[1]) | 0},${Math.min(255, c[2]) | 0})`;
+  function hash(x, y) {
+    let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function noise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function mulberry32(seed) {
+    return () => {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- state ----------
+  const canvas = document.getElementById('glass');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const glow = document.createElement('canvas');
+  const gctx = glow.getContext('2d');
+
+  let W, H, cols, rows, ox, oy, N;
+  let fog, rate, sceneCh, sceneCol, mist = [];
+  let lut = [], fogLut = [], baseColor = '#000';
+  let sceneKey = 'garden', rain = 1, fogMul = 1, paused = false;
+  let drops = [], spawnAcc = 0, tickAcc = 0;
+  let rafId = 0, last = 0, frameAcc = 0;
+  let buckets = [], fogBuckets = Array.from({ length: OL }, () => []);
+
+  // ---------- scene layer ----------
+  function buildScene() {
+    const S = SCENES[sceneKey];
+    const base = hexRgb(S.base);
+    baseColor = S.base;
+    const rnd = mulberry32(sceneKey.length * 7919 + cols * 31 + rows);
+    const blobs = [];
+    const palette = [];
+    for (const g of S.groups) {
+      let pi = palette.indexOf(g.color);
+      if (pi < 0) { palette.push(g.color); pi = palette.length - 1; }
+      for (let k = 0; k < g.n; k++) {
+        const scale = Math.max(0.7, Math.min(1.6, cols / 120));
+        blobs.push({
+          x: rnd() * cols,
+          y: (g.y[0] + rnd() * (g.y[1] - g.y[0])) * rows,
+          r: (g.r[0] + rnd() * (g.r[1] - g.r[0])) * scale,
+          sx: g.sx, s: g.s, ch: g.ch, pi, color: hexRgb(g.color),
+        });
+      }
+    }
+
+    // per-cell strongest blob
+    sceneCh = new Array(N);
+    sceneCol = new Uint16Array(N);
+    const baseIdx = palette.length * IL;        // dim base texture colour index
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        let best = 0, bb = null;
+        for (const b of blobs) {
+          const dx = (c - b.x) / b.sx, dy = (r - b.y) * (CH / CW);   // cells are taller than wide
+          const d = Math.sqrt(dx * dx + dy * dy) / (b.r * 1.5);
+          if (d >= 1) continue;
+          const inf = (1 - d) * (1 - d) * b.s;
+          if (inf > best) { best = inf; bb = b; }
+        }
+        const i = r * cols + c;
+        if (bb && best > 0.07) {
+          const lv = Math.min(IL - 1, Math.floor(best * IL));
+          sceneCh[i] = best > 0.22 ? bb.ch : (hash(c, r) > 0.5 ? '·' : '.');
+          sceneCol[i] = bb.pi * IL + lv;
+        } else {
+          sceneCh[i] = hash(c * 3, r * 7) > 0.84 ? '.' : '';
+          sceneCol[i] = baseIdx;
+        }
+      }
+    }
+
+    // colour LUT: [colour index][fog level]
+    lut = [];
+    const pal = palette.map(hexRgb);
+    const colours = [];
+    for (let p = 0; p < pal.length; p++) {
+      for (let l = 0; l < IL; l++) {
+        const inf = (l + 0.5) / IL;
+        const c = mix(base, pal[p], 0.35 + 0.65 * Math.min(1, inf * 1.3));
+        colours.push(mix(c, [255, 255, 255], Math.max(0, inf - 0.6) * 0.5));   // sharp = brighter
+      }
+    }
+    colours.push(mix(base, [255, 255, 255], 0.16));
+    for (const sharp of colours) {
+      for (let k = 0; k < FL; k++) {
+        if (k === 0) { lut.push(rgb(sharp)); continue; }
+        const t = k / (FL - 1);
+        const desat = mix(sharp, FOG_RGB, t * 0.65);
+        lut.push(rgb(desat.map(v => v * (1 - 0.5 * t))));
+      }
+    }
+    buckets = Array.from({ length: lut.length }, () => []);
+
+    // soft blurred scene behind the glass
+    glow.width = Math.ceil(W / 2); glow.height = Math.ceil(H / 2);
+    gctx.setTransform(0.5, 0, 0, 0.5, 0, 0);
+    gctx.fillStyle = S.base;
+    gctx.fillRect(0, 0, W, H);
+    gctx.globalCompositeOperation = 'lighter';
+    for (const b of blobs) {
+      const x = ox + (b.x + 0.5) * CW, y = oy + (b.y + 0.5) * CH;
+      const R = b.r * 1.5 * CW * 1.6;
+      gctx.save();
+      gctx.translate(x, y);
+      gctx.scale(b.sx, 1);
+      const g = gctx.createRadialGradient(0, 0, 0, 0, 0, R);
+      const [cr, cg, cb] = b.color;
+      g.addColorStop(0, `rgba(${cr},${cg},${cb},${0.22 * b.s})`);
+      g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      gctx.fillStyle = g;
+      gctx.fillRect(-R, -R, 2 * R, 2 * R);
+      gctx.restore();
+    }
+    gctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---------- fog ----------
+  for (let k = 0; k < OL; k++) {
+    const a = 0.16 + 0.5 * ((k + 0.5) / OL);
+    fogLut.push(`rgba(${FOG_RGB[0]},${FOG_RGB[1]},${FOG_RGB[2]},${a.toFixed(3)})`);
+  }
+
+  function resetFog(staticMode) {
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const n = noise(c * 0.08, r * 0.12) * 0.7 + noise(c * 0.25 + 9, r * 0.35) * 0.3;
+      fog[r * cols + c] = staticMode ? clamp01(0.5 + (n - 0.5) * 0.9) : clamp01(0.72 + n * 0.3);
+    }
+    rate.fill(1);
+  }
+
+  function makeMist() {
+    mist = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const h = hash(c + 101, r + 37);
+      if (h > 0.93) mist.push(r * cols + c, h > 0.975 ? "'" : '·');
+    }
+  }
+
+  // ---------- drops ----------
+  function spawnBead(x, y, size) {
+    drops.push({
+      x: x ?? Math.random() * cols,
+      y: y ?? (Math.random() < 0.82 ? Math.random() * rows * 0.67 : Math.random() * rows),
+      size: size ?? Math.random() * 0.15,
+      grow: 2 + Math.random() * 3.5,
+      run: false, vx: 0, dist: 0, dead: false,
+    });
+  }
+
+  function clearAround(x, y) {
+    const cx = Math.round(x), cy = Math.round(y);
+    for (let dy = -1; dy <= 1; dy++) {
+      const r = cy + dy;
+      if (r < 0 || r >= rows) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const c = cx + dx;
+        if (c < 0 || c >= cols) continue;
+        const i = r * cols + c;
+        fog[i] = 0;
+        rate[i] = 0.5;                 // drying trail re-fogs at half speed
+      }
+    }
+  }
+
+  function stepDrops() {
+    const area = (cols * rows) / 6000;
+    spawnAcc += TICK * rain * 1.4 * area;
+    while (spawnAcc >= 1) { spawnAcc -= 1; if (drops.length < 260) spawnBead(); }
+
+    for (const d of drops) {
+      if (d.dead) continue;
+      if (!d.run) {
+        d.size += TICK / d.grow;
+        if (d.size >= 1) { d.run = true; d.size = 1; }
+        continue;
+      }
+      const steps = 1 + (Math.random() < clamp01(0.25 + (d.size - 1) * 1.2) ? 1 : 0);
+      for (let s = 0; s < steps && !d.dead; s++) {
+        d.y += 1;
+        d.vx = d.vx * 0.75 + (Math.random() - 0.5) * 0.5;
+        d.x = Math.max(0, Math.min(cols - 1, d.x + d.vx));
+        d.dist++;
+        clearAround(d.x, d.y);
+        for (const b of drops) {
+          if (b === d || b.dead || b.run) continue;
+          if (Math.abs(b.x - d.x) < 1.6 && Math.abs(b.y - d.y) < 1.2) {
+            b.dead = true;
+            d.size += 0.12 + 0.2 * b.size;
+          }
+        }
+        if (Math.random() < 0.03) spawnBead(d.x, d.y - 2, 0.25);   // leaves a little bead behind
+        if (d.y >= rows - 1 || d.dist > 50 + d.size * 10) d.dead = true;
+      }
+    }
+    drops = drops.filter(d => !d.dead);
+  }
+
+  function refog(dt) {
+    const k = dt * REFOG * fogMul;
+    if (k <= 0) return;
+    for (let i = 0; i < N; i++) {
+      let f = fog[i];
+      if (f >= 1) continue;
+      f += k * rate[i];
+      if (f >= 0.98) { f = Math.min(1, f); rate[i] = 1; }
+      fog[i] = f;
+    }
+  }
+
+  // ---------- wipe ----------
+  function wipeAt(px, py) {
+    const R = 4 * CW * 1.25;
+    const c0 = Math.floor((px - ox - R) / CW), c1 = Math.ceil((px - ox + R) / CW);
+    const r0 = Math.floor((py - oy - R) / CH), r1 = Math.ceil((py - oy + R) / CH);
+    for (let r = Math.max(0, r0); r <= Math.min(rows - 1, r1); r++) {
+      for (let c = Math.max(0, c0); c <= Math.min(cols - 1, c1); c++) {
+        const dx = ox + (c + 0.5) * CW - px, dy = oy + (r + 0.5) * CH - py;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d >= R) continue;
+        const i = r * cols + c;
+        fog[i] = Math.min(fog[i], smooth(R * 0.55, R, d) * fog[i]);
+        rate[i] = 1;
+      }
+    }
+    for (const d of drops) {
+      const dx = ox + (d.x + 0.5) * CW - px, dy = oy + (d.y + 0.5) * CH - py;
+      if (dx * dx + dy * dy < R * R * 0.6) d.dead = true;
+    }
+    drops = drops.filter(d => !d.dead);
+  }
+
+  // ---------- render ----------
+  const px = c => ox + c * CW + CW / 2;
+  const py = r => oy + (r + 1) * CH - 4;
+
+  function render() {
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(glow, 0, 0, W, H);
+
+    for (const b of buckets) b.length = 0;
+    for (const b of fogBuckets) b.length = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c, f = fog[i];
+        if (f > 0.75) {
+          fogBuckets[Math.min(OL - 1, ((f - 0.75) / 0.25 * OL) | 0)].push(c, r);
+        } else {
+          if (!sceneCh[i]) continue;
+          const lv = f < 0.25 ? 0 : 1 + Math.min(FL - 2, ((f - 0.25) / 0.5 * (FL - 1)) | 0);
+          buckets[sceneCol[i] * FL + lv].push(c, r, i);
+        }
+      }
+    }
+
+    ctx.font = FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    for (let k = 0; k < OL; k++) {
+      const bk = fogBuckets[k];
+      if (!bk.length) continue;
+      ctx.fillStyle = fogLut[k];
+      for (let j = 0; j < bk.length; j += 2) ctx.fillText('░', px(bk[j]), py(bk[j + 1]));
+    }
+    for (let k = 0; k < buckets.length; k++) {
+      const bk = buckets[k];
+      if (!bk.length) continue;
+      ctx.fillStyle = lut[k];
+      for (let j = 0; j < bk.length; j += 3) ctx.fillText(sceneCh[bk[j + 2]], px(bk[j]), py(bk[j + 1]));
+    }
+
+    // fine static mist droplets on fogged glass
+    ctx.fillStyle = 'rgba(232,236,246,0.38)';
+    for (let j = 0; j < mist.length; j += 2) {
+      const i = mist[j];
+      if (fog[i] < 0.45) continue;
+      ctx.fillText(mist[j + 1], px(i % cols), py((i / cols) | 0));
+    }
+
+    // drops
+    ctx.font = DROP_FONT;
+    for (const d of drops) {
+      const ch = d.size < 0.6 ? 'o' : 'O';
+      const x = px(Math.round(d.x)), y = py(Math.round(d.y));
+      ctx.globalAlpha = d.run ? 0.5 : 0.25 + 0.3 * d.size;
+      ctx.fillStyle = '#05060a';
+      ctx.fillText(ch, x + 1, y + 1);
+      ctx.globalAlpha = d.run ? 1 : 0.45 + 0.55 * d.size;
+      ctx.fillStyle = DROP_COLOR;
+      ctx.fillText(ch, x, y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- loop ----------
+  function frame(ts) {
+    rafId = requestAnimationFrame(frame);
+    const now = ts / 1000;
+    const dt = last ? Math.min(0.1, now - last) : 0;
+    last = now;
+    tickAcc += dt;
+    while (tickAcc >= TICK) { tickAcc -= TICK; stepDrops(); }
+    refog(dt);
+    frameAcc += dt;
+    if (frameAcc < 1 / 30) return;
+    frameAcc = 0;
+    render();
+  }
+
+  function start() { if (!rafId) { last = 0; rafId = requestAnimationFrame(frame); } }
+  function stop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+  function running() { return !paused && !document.hidden && !reduce.matches; }
+  function sync() { running() ? start() : (stop(), render()); }
+
+  // reduced motion: half-fogged, a few frozen trails and beads
+  function buildStatic() {
+    resetFog(true);
+    drops = [];
+    const rnd = mulberry32(42);
+    for (let t = 0; t < 6; t++) {
+      const d = { x: rnd() * cols, y: rnd() * rows * 0.4, size: 1.2, run: true, vx: 0, dist: 0, dead: false };
+      const len = 25 + rnd() * 30;
+      while (d.dist < len && d.y < rows - 1) {
+        d.y += 1; d.dist++;
+        d.vx = d.vx * 0.75 + (rnd() - 0.5) * 0.5;
+        d.x = Math.max(0, Math.min(cols - 1, d.x + d.vx));
+        clearAround(d.x, d.y);
+      }
+      drops.push(d);
+    }
+    for (let k = 0; k < 30; k++) drops.push({ x: rnd() * cols, y: rnd() * rows * 0.8, size: 0.2 + rnd() * 0.8, run: false, dead: false });
+  }
+
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.max(20, Math.ceil(W / CW));
+    rows = Math.max(15, Math.ceil(H / CH));
+    ox = (W - cols * CW) / 2;
+    oy = (H - rows * CH) / 2;
+    N = cols * rows;
+    fog = new Float32Array(N);
+    rate = new Float32Array(N);
+    buildScene();
+    makeMist();
+    if (reduce.matches) {
+      buildStatic();
+    } else {
+      resetFog(false);
+      drops = [];
+      for (let k = 0; k < Math.round(N / 400); k++) spawnBead(undefined, undefined, Math.random() * 0.8);
+    }
+  }
+
+  // ---------- controls ----------
+  const rainEl = document.getElementById('rain'), rainOut = document.getElementById('rainOut');
+  const fogEl = document.getElementById('fogc'), fogOut = document.getElementById('fogOut');
+  const pauseBtn = document.getElementById('pause');
+  const sceneBtns = document.querySelectorAll('[data-scene]');
+
+  rainEl.addEventListener('input', () => { rain = +rainEl.value; rainOut.textContent = rain.toFixed(1) + '×'; });
+  fogEl.addEventListener('input', () => { fogMul = +fogEl.value; fogOut.textContent = fogMul.toFixed(1) + '×'; });
+  sceneBtns.forEach(btn => btn.addEventListener('click', () => {
+    sceneKey = btn.dataset.scene;
+    sceneBtns.forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    buildScene();
+    if (!rafId) render();
+  }));
+  document.getElementById('clear').addEventListener('click', () => {
+    fog.fill(0);
+    rate.fill(1);
+    if (!rafId) render();
+  });
+
+  function togglePause() {
+    paused = !paused;
+    pauseBtn.setAttribute('aria-pressed', String(paused));
+    pauseBtn.textContent = paused ? '▶ Play' : '❚❚ Pause';
+    sync();
+  }
+  pauseBtn.addEventListener('click', togglePause);
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat) return;
+    if (e.target instanceof HTMLButtonElement) return;
+    e.preventDefault();
+    togglePause();
+  });
+
+  // hand wipe
+  let wiping = false, lx = 0, ly = 0;
+  canvas.addEventListener('pointerdown', e => {
+    wiping = true; lx = e.clientX; ly = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add('wiping');
+    wipeAt(lx, ly);
+    if (!rafId) render();
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!wiping) return;
+    const x = e.clientX, y = e.clientY;
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - lx, y - ly) / (CW * 1.5)));
+    for (let s = 1; s <= steps; s++) wipeAt(lx + (x - lx) * s / steps, ly + (y - ly) * s / steps);
+    lx = x; ly = y;
+    if (!rafId) render();
+  });
+  const endWipe = () => { wiping = false; canvas.classList.remove('wiping'); };
+  canvas.addEventListener('pointerup', endWipe);
+  canvas.addEventListener('pointercancel', endWipe);
+
+  document.addEventListener('visibilitychange', sync);
+  const onReduce = () => { resize(); sync(); };
+  reduce.addEventListener ? reduce.addEventListener('change', onReduce) : reduce.addListener(onReduce);
+
+  let resizeQueued = false;
+  addEventListener('resize', () => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => { resizeQueued = false; resize(); if (!rafId) render(); });
+  });
+
+  resize();
+  render();
+  sync();
+})();
+</script>
+</body>
+</html>
