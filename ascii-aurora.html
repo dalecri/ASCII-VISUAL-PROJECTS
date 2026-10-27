@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ASCII Aurora</title>
+<style>
+  :root{
+    --amber:#E8873A;
+    --ink:#D9DEEA;
+    --dim:#8A90A6;
+    --bar:rgba(12,14,26,.62);
+    --line:rgba(255,255,255,.08);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#05070F;overflow:hidden}
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+
+  .bar{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px 14px;
+    padding:7px 10px 7px 16px;border-radius:999px;
+    background:var(--bar);border:1px solid var(--line);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font:12px/1 "Space Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    color:var(--ink);opacity:.72;transition:opacity .4s ease;
+    max-width:calc(100vw - 32px);user-select:none;-webkit-user-select:none;
+  }
+  .bar:hover,.bar:focus-within{opacity:1}
+
+  .storm{display:flex;align-items:center;gap:9px;cursor:pointer}
+  .lbl{color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+  input[type=range]{width:110px;accent-color:var(--amber);cursor:pointer;margin:0}
+  output{min-width:11ch;color:var(--amber);font-variant-numeric:tabular-nums}
+
+  .seg{display:flex;gap:2px;padding-left:12px;border-left:1px solid var(--line)}
+  button{
+    font:inherit;color:var(--dim);background:transparent;border:0;
+    padding:6px 10px;border-radius:999px;cursor:pointer;transition:color .2s,background .2s;
+  }
+  button:hover{color:var(--ink)}
+  .seg button[aria-pressed="true"]{background:var(--amber);color:#170c03}
+  .pause{border:1px solid rgba(232,135,58,.45);color:var(--amber);min-width:9ch}
+  .pause[aria-pressed="true"]{background:rgba(232,135,58,.14)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  @media (max-width:600px){
+    .bar{border-radius:18px;bottom:10px;padding:8px 10px;gap:8px 10px}
+    .seg{border-left:0;padding-left:0}
+    input[type=range]{width:90px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pause{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="sky" role="img" aria-label="ASCII aurora borealis rippling above a northern treeline under a starry sky"></canvas>
+
+<div class="bar" role="toolbar" aria-label="Aurora controls">
+  <label class="storm">
+    <span class="lbl">Storm</span>
+    <input id="storm" type="range" min="0" max="3" step="0.1" value="1" aria-label="Storm strength">
+    <output id="kp" for="storm">Kp 3 · Active</output>
+  </label>
+  <div class="seg" role="group" aria-label="Palette">
+    <button data-pal="classic" aria-pressed="true">Classic</button>
+    <button data-pal="violet" aria-pressed="false">Violet Storm</button>
+    <button data-pal="blood" aria-pressed="false">Blood Sky</button>
+  </div>
+  <button id="pause" class="pause" aria-pressed="false" title="Pause (Space)">❚❚ Pause</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- constants ----------
+  const CW = 11, CH = 16;                       // cell size in CSS px
+  const FONT = '13px "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+  const TREE_FONT = 'bold 15px "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  const GLYPHS = ' .·:;+*#';
+  const BG = [5, 7, 15];                        // #05070F
+  const STAR_COLOR = '#CFE0FF';
+  const MOON_COLOR = '#F3E9C6';
+  const TREE_COLOR = '#0A1410';
+  const STATIC_T = 37;                          // reduced-motion frame time
+  const LV = 24, EV = 4, NB = LV * EV;          // colour LUT: brightness levels x edge levels
+
+  const PALETTES = {
+    classic: { low:'#0E5B34', mid:'#3CE882', high:'#B8FFD9', edge:'#9B6BFF' },
+    violet:  { low:'#2E1060', mid:'#A24DFF', high:'#F4D2FF', edge:'#FF4FC8' },
+    blood:   { low:'#5C0D16', mid:'#E8432E', high:'#FFC98A', edge:'#B0186E' },
+  };
+
+  // curtain layers: top edge height (fraction of rows), fade depth, wave freqs, drift speed
+  const layers = [
+    { base:.10, depth:.58, f1:.021, f2:.083, speed: .045, inten:1.00, seed:11.3, p0:0, pull:0 },
+    { base:.20, depth:.48, f1:.033, f2:.061, speed:-.032, inten:.82,  seed:47.9, p0:3, pull:0 },
+    { base:.30, depth:.42, f1:.017, f2:.104, speed: .060, inten:.66,  seed:91.1, p0:7, pull:0 },
+  ];
+
+  // ---------- deterministic value noise ----------
+  function hash(x, y) {
+    let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function noise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function mulberry32(seed) {
+    return () => {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+  // ---------- state ----------
+  const canvas = document.getElementById('sky');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  let W, H, cols, rows, ox, oy;
+  let grid, edge, stars = [], trees, moon;
+  let storm = 1, palKey = 'classic', lut = [], hazeColor = '#05070F';
+  let simT = 0, twT = 0, paused = false, rafId = 0, last = 0, acc = 0;
+  const buckets = Array.from({ length: NB }, () => []);
+  const mouse = { x: -1, y: -1, sx: -1, active: 0 };
+
+  // ---------- setup ----------
+  function buildColors() {
+    const p = PALETTES[palKey];
+    const low = hexRgb(p.low), mid = hexRgb(p.mid), high = hexRgb(p.high), ed = hexRgb(p.edge);
+    for (let lv = 0; lv < LV; lv++) {
+      const b = (lv + 0.5) / LV;
+      const base = b < 0.45 ? mix(low, mid, smooth(0.06, 0.45, b)) : mix(mid, high, smooth(0.45, 1, b));
+      const alpha = (0.35 + 0.65 * Math.min(1, b * 1.4)).toFixed(3);
+      for (let e = 0; e < EV; e++) {
+        const c = mix(base, ed, (e / (EV - 1)) * 0.85);
+        lut[lv * EV + e] = `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${alpha})`;
+      }
+    }
+    const hz = mix(BG, mid, 0.07 + 0.03 * storm);
+    hazeColor = `rgb(${hz[0] | 0},${hz[1] | 0},${hz[2] | 0})`;
+  }
+
+  function makeStars() {
+    const rnd = mulberry32(20261027);
+    stars = [];
+    const skyRows = rows - 2;
+    for (let i = 0; i < 220; i++) {
+      const c = Math.floor(rnd() * cols), r = Math.floor(rnd() * skyRows);
+      if (moon && Math.abs(c - moon.c) < 2 && Math.abs(r - moon.r) < 2) continue;
+      const b = rnd();
+      const ch = b > 0.985 ? '✦' : b > 0.9 ? '*' : b > 0.65 ? '+' : '.';
+      stars.push({ c, r, ch, a: 0.3 + 0.7 * b, sp: 0.4 + rnd() * 1.2, ph: rnd() * Math.PI * 2 });
+    }
+  }
+
+  function makeTrees() {
+    trees = new Uint8Array(cols);
+    for (let c = 0; c < cols; c++) {
+      const n = noise(c * 0.18, 5.5) * 0.7 + noise(c * 0.71, 9.1) * 0.3 + (hash(c, 77) - 0.5) * 0.25;
+      trees[c] = n > 0.52 ? 2 : 1;
+    }
+  }
+
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.max(12, Math.floor(W / CW));
+    rows = Math.max(12, Math.floor(H / CH));
+    ox = (W - cols * CW) / 2;
+    oy = H - rows * CH;                         // leftover px goes to the top, treeline sits on the bottom edge
+    grid = new Float32Array(cols * rows);
+    edge = new Float32Array(cols * rows);
+    moon = { c: cols - 7, r: 3 };
+    makeStars();
+    makeTrees();
+  }
+
+  // ---------- aurora ----------
+  function curtainTop(L, xs, t) {
+    const ph = L.p0 + t * L.speed;
+    return rows * (
+      L.base
+      + 0.05 * Math.sin(xs * L.f1 + ph)
+      + 0.03 * Math.sin(xs * L.f2 - ph * 1.7 + L.seed)
+      + 0.012 * Math.sin(xs * 0.15 + t * 0.7 + L.seed)       // small ripple along the edge
+      + 0.09 * (noise(xs * 0.045 + L.seed, ph * 0.6) - 0.5)  // slow undulation
+    );
+  }
+
+  function computeAurora(t) {
+    grid.fill(0); edge.fill(0);
+    const sb = 0.45 + 0.4 * storm;                    // brightness
+    const rc = Math.min(0.6, 0.18 + 0.12 * storm);    // ray contrast
+    const thr = 0.22 - 0.05 * storm;                  // curtain coverage
+    const pullR = Math.max(8, cols * 0.1);
+
+    for (const L of layers) {
+      const depthR = L.depth * rows;
+      for (let c = 0; c < cols; c++) {
+        let xs = c, g = 0;
+        if (L.pull > 0.002) {
+          const dx = c - mouse.sx;
+          g = Math.exp(-(dx * dx) / (pullR * pullR));
+          xs = c + dx * 0.35 * L.pull * g;            // sample further out = features drawn in toward the pointer
+        }
+        const m = noise(xs * 0.028 + L.seed * 3, t * 0.05 + L.seed);
+        const mask = smooth(thr, thr + 0.45, m);
+        if (mask < 0.01) continue;
+        const n1 = noise(xs * 0.35, t * 0.6 + L.seed);
+        const n2 = noise(xs * 0.9 + 13.7, t * 1.1 + L.seed);
+        const ray = (1 - rc) + rc * (0.7 * n1 + 0.3 * n2);
+        const amp = L.inten * sb * ray * mask * (1 + 0.6 * L.pull * g);
+        if (amp < 0.02) continue;
+
+        const y0 = Math.max(0.5, curtainTop(L, xs, t) - 2.5 * L.pull * g);
+        const rMax = rows - trees[c];
+        for (let r = Math.max(0, Math.floor(y0) - 1); r < rMax; r++) {
+          const d = r + 0.5 - y0;
+          if (d < -0.6) continue;
+          const fall = 1 - d / depthR;
+          if (fall <= 0) break;
+          const rise = clamp01((d + 0.6) / 1.8);
+          let b = amp * rise * fall * Math.sqrt(fall);
+          if (b > 1) b = 1;
+          const i = r * cols + c;
+          if (b > grid[i]) {
+            grid[i] = b;
+            edge[i] = d < 2.6 ? 1 - Math.max(0, d) / 2.6 : 0;
+          }
+        }
+      }
+    }
+  }
+
+  // ---------- render ----------
+  const cx = c => ox + c * CW + CW / 2;
+  const cy = r => oy + (r + 1) * CH - 4;           // baseline-aligned
+
+  function render(steady) {
+    // background with a faint horizon haze so the treeline reads as a silhouette
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#05070F');
+    bg.addColorStop(0.72, '#05070F');
+    bg.addColorStop(1, hazeColor);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    computeAurora(simT);
+
+    ctx.font = FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    // stars (only where the aurora is faint)
+    ctx.fillStyle = STAR_COLOR;
+    for (const s of stars) {
+      const g = grid[s.r * cols + s.c];
+      if (g > 0.16) continue;
+      let a = steady ? s.a * 0.85 : s.a * (0.55 + 0.45 * Math.sin(twT * s.sp + s.ph));
+      a *= 1 - g / 0.16;
+      if (a <= 0.01) continue;
+      ctx.globalAlpha = a;
+      ctx.fillText(s.ch, cx(s.c), cy(s.r));
+    }
+
+    // moon (drawn with the stars, hidden under bright curtain cells)
+    if (grid[moon.r * cols + moon.c] < 0.3) {
+      const mx = cx(moon.c), my = cy(moon.r) - 5;
+      const glow = ctx.createRadialGradient(mx, my, 0, mx, my, 42);
+      glow.addColorStop(0, 'rgba(243,233,198,0.10)');
+      glow.addColorStop(1, 'rgba(243,233,198,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = glow;
+      ctx.fillRect(mx - 42, my - 42, 84, 84);
+      ctx.fillStyle = MOON_COLOR;
+      ctx.fillText(')', mx, cy(moon.r));
+    }
+    ctx.globalAlpha = 1;
+
+    // aurora, batched by colour
+    for (let k = 0; k < NB; k++) buckets[k].length = 0;
+    for (let r = 0; r < rows; r++) {
+      const base = r * cols;
+      for (let c = 0; c < cols; c++) {
+        const b = grid[base + c];
+        if (b < 0.06) continue;
+        const gi = 1 + Math.min(6, ((b - 0.06) / 0.94 * 7) | 0);
+        const lv = Math.min(LV - 1, (b * LV) | 0);
+        const e = edge[base + c];
+        const ei = e > 0 ? Math.min(EV - 1, Math.ceil(e * (EV - 1))) : 0;
+        buckets[lv * EV + ei].push(c, r, gi);
+      }
+    }
+    for (let k = 0; k < NB; k++) {
+      const bk = buckets[k];
+      if (!bk.length) continue;
+      ctx.fillStyle = lut[k];
+      for (let i = 0; i < bk.length; i += 3) ctx.fillText(GLYPHS[bk[i + 2]], cx(bk[i]), cy(bk[i + 1]));
+    }
+
+    // treeline
+    ctx.font = TREE_FONT;
+    ctx.fillStyle = TREE_COLOR;
+    for (let c = 0; c < cols; c++) {
+      if (trees[c] === 2) {
+        ctx.fillText('▲', cx(c), cy(rows - 2));
+        ctx.fillText('#', cx(c), cy(rows - 1));
+      } else {
+        ctx.fillText(hash(c, 3) > 0.25 ? '▲' : '#', cx(c), cy(rows - 1));
+      }
+    }
+  }
+
+  // ---------- animation ----------
+  function nearestLayer() {
+    if (mouse.sx < 0) return null;
+    let best = null, bestD = Infinity;
+    for (const L of layers) {
+      const yc = curtainTop(L, mouse.sx, simT) + L.depth * rows * 0.2;
+      const d = Math.abs(mouse.y - yc);
+      if (d < bestD) { bestD = d; best = L; }
+    }
+    return best;
+  }
+
+  function update(step) {
+    const sway = 0.35 + 0.55 * storm;
+    simT += step * sway;
+    twT += step;
+    if (mouse.x >= 0) mouse.sx += (mouse.x - mouse.sx) * (1 - Math.pow(0.5, step / 0.4));
+    mouse.active *= Math.pow(0.5, step / 2);
+    const target = nearestLayer();
+    const k = 1 - Math.pow(0.5, step / 0.8);
+    for (const L of layers) L.pull += ((L === target ? mouse.active : 0) - L.pull) * k;
+  }
+
+  function frame(ts) {
+    rafId = requestAnimationFrame(frame);
+    const now = ts / 1000;
+    const dt = last ? Math.min(0.1, now - last) : 0;
+    last = now;
+    acc += dt;
+    if (acc < 1 / 30) return;                    // ~30fps is plenty for an ambient scene
+    update(acc);
+    acc = 0;
+    render(false);
+  }
+
+  function start() { if (!rafId) { last = 0; acc = 0; rafId = requestAnimationFrame(frame); } }
+  function stop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+  function running() { return !paused && !document.hidden && !reduce.matches; }
+  function sync() { running() ? start() : (stop(), renderOnce()); }
+  function renderOnce() {
+    if (reduce.matches) {
+      simT = STATIC_T;
+      for (const L of layers) L.pull = 0;
+      render(true);
+    } else {
+      render(false);
+    }
+  }
+
+  // ---------- controls ----------
+  const stormEl = document.getElementById('storm');
+  const kpEl = document.getElementById('kp');
+  const pauseBtn = document.getElementById('pause');
+  const palBtns = document.querySelectorAll('[data-pal]');
+
+  function setStorm(v) {
+    storm = v;
+    const kp = Math.round(v * 3);
+    const word = v < 0.67 ? 'Calm' : v < 2 ? 'Active' : 'Storm';
+    kpEl.textContent = `Kp ${kp} · ${word}`;
+    buildColors();
+    if (!rafId) renderOnce();
+  }
+  stormEl.addEventListener('input', () => setStorm(+stormEl.value));
+
+  palBtns.forEach(btn => btn.addEventListener('click', () => {
+    palKey = btn.dataset.pal;
+    palBtns.forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    buildColors();
+    if (!rafId) renderOnce();
+  }));
+
+  function togglePause() {
+    paused = !paused;
+    pauseBtn.setAttribute('aria-pressed', String(paused));
+    pauseBtn.textContent = paused ? '▶ Play' : '❚❚ Pause';
+    sync();
+  }
+  pauseBtn.addEventListener('click', togglePause);
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat) return;
+    if (e.target instanceof HTMLButtonElement) return;  // let Space activate the focused button
+    e.preventDefault();
+    togglePause();
+  });
+
+  addEventListener('pointermove', e => {
+    if (reduce.matches || e.target.closest('.bar')) return;
+    const c = (e.clientX - ox) / CW, r = (e.clientY - oy) / CH;
+    if (mouse.x < 0) { mouse.sx = c; mouse.x = c; mouse.y = r; return; }
+    const dist = Math.hypot(c - mouse.x, r - mouse.y);
+    mouse.x = c; mouse.y = r;
+    mouse.active = Math.min(1, mouse.active + Math.min(dist, 4) * 0.012);
+  });
+
+  document.addEventListener('visibilitychange', sync);
+  reduce.addEventListener ? reduce.addEventListener('change', sync) : reduce.addListener(sync);
+
+  let resizeQueued = false;
+  addEventListener('resize', () => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => { resizeQueued = false; resize(); if (!rafId) renderOnce(); });
+  });
+
+  // ---------- go ----------
+  resize();
+  buildColors();
+  simT = 12;
+  renderOnce();
+  sync();
+})();
+</script>
+</body>
+</html>
