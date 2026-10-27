@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ASCII Terrain Flyover</title>
+<style>
+  :root{
+    --amber:#E8873A;
+    --ink:#E4DCEB;
+    --dim:#9A8FA8;
+    --bar:rgba(16,11,22,.62);
+    --line:rgba(255,255,255,.08);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#140F1D;overflow:hidden}
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+
+  .bar{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px 16px;
+    padding:7px 10px 7px 16px;border-radius:999px;
+    background:var(--bar);border:1px solid var(--line);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    font:12px/1 "Space Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    color:var(--ink);opacity:.74;transition:opacity .4s ease;
+    max-width:calc(100vw - 32px);user-select:none;-webkit-user-select:none;
+  }
+  .bar:hover,.bar:focus-within{opacity:1}
+
+  .ctl{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .lbl{color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+  input[type=range]{width:96px;accent-color:var(--amber);cursor:pointer;margin:0}
+  output{min-width:6ch;color:var(--amber);font-variant-numeric:tabular-nums}
+
+  .seg{display:flex;gap:2px;padding-left:14px;border-left:1px solid var(--line)}
+  button{
+    font:inherit;color:var(--dim);background:transparent;border:0;
+    padding:6px 10px;border-radius:999px;cursor:pointer;transition:color .2s,background .2s;
+  }
+  button:hover{color:var(--ink)}
+  .seg button[aria-pressed="true"]{background:var(--amber);color:#170c03}
+  .pause{border:1px solid rgba(232,135,58,.45);color:var(--amber);min-width:9ch}
+  .pause[aria-pressed="true"]{background:rgba(232,135,58,.14)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  @media (max-width:640px){
+    .bar{border-radius:18px;bottom:10px;padding:8px 10px;gap:8px 12px}
+    .seg{border-left:0;padding-left:0}
+    input[type=range]{width:80px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pause{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="view" role="img" aria-label="Endless ASCII flight over procedurally generated mountains, lakes and ridgelines at dusk"></canvas>
+
+<div class="bar" role="toolbar" aria-label="Flight controls">
+  <label class="ctl">
+    <span class="lbl">Speed</span>
+    <input id="speed" type="range" min="0" max="3" step="0.1" value="1" aria-label="Flight speed">
+    <output id="speedOut" for="speed">1.0×</output>
+  </label>
+  <label class="ctl">
+    <span class="lbl">Altitude</span>
+    <input id="alt" type="range" min="0.3" max="2" step="0.05" value="0.8" aria-label="Camera altitude">
+    <output id="altOut" for="alt">800 m</output>
+  </label>
+  <div class="seg" role="group" aria-label="Render mode">
+    <button data-mode="filled" aria-pressed="true">Filled</button>
+    <button data-mode="contour" aria-pressed="false">Contour</button>
+  </div>
+  <button id="pause" class="pause" aria-pressed="false" title="Pause (Space)">❚❚ Pause</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // CORE-START: pure terrain + projection logic (no DOM)
+  const GL = ' .:-=+*#%@~';          // last char is water
+  const WATER = 10;
+  const FREQ = 0.06;                 // world -> noise frequency
+  const LO = 0.0832, HI = 0.8013;    // fBm normalisation (calibrated so lakes ~18%, peaks ~6%)
+  const HS = 4;                      // world height scale
+  const WL = 0.28;                   // water level
+  const D0 = 2, DSPAN = 60;          // dist = 2 + pow(t, 1.7) * 60
+  const NB = 6, NS = 6, NF = 6;      // colour LUT dims: band x shade x fog
+
+  function hash(x, y) {
+    let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function noise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, z) {
+    let s = 0, a = 0.5, f = 1, n = 0;
+    for (let o = 0; o < 4; o++) {
+      s += a * noise(x * f + o * 17.3, z * f - o * 9.1);
+      n += a; a *= 0.5; f *= 2.03;
+    }
+    return s / n;
+  }
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  function heightAt(x, z) {
+    const t = clamp01((fbm(x * FREQ, z * FREQ) - LO) / (HI - LO));
+    return Math.pow(t, 1.4);          // flatter valleys, peakier ridges
+  }
+  function bandOf(h) {
+    return h < WL ? 0 : h < 0.45 ? 2 : h < 0.65 ? 3 : h < 0.82 ? 4 : 5;
+  }
+
+  // Voxel-style column march: near slices first, each slice only paints rows above
+  // what nearer terrain already covered, so ridges occlude what's behind them.
+  function computeFrame(S, emit) {
+    const { cols, rows, horizon, camZ, camY, bankX, roll, alt, contour, time } = S;
+    const F = (rows - horizon) * 2.2;            // projection scale (rows per unit height at dist 1)
+    const fov = 0.55 + 0.25 * alt;               // half-width per unit distance
+    const N = Math.max(60, Math.min(220, rows * 2));
+    const top = new Int16Array(cols);
+    for (let c = 0; c < cols; c++) {
+      const nx = (c - cols / 2) / (cols / 2);
+      const rollOff = roll * nx * rows * 0.04;   // banked horizon tilt
+      let ymin = rows;
+      for (let i = 0; i < N && ymin > 0; i++) {
+        const t = i / (N - 1);
+        const d = D0 + Math.pow(t, 1.7) * DSPAN;
+        // lower (nearer) slices shift a little more when banking: fake tilt
+        const wx = bankX + nx * d * fov + roll * (1 - t) * 3;
+        const wz = camZ + d;
+        const h = heightAt(wx, wz);
+        const hp = Math.max(h, WL);
+        const y = horizon + (camY - hp * HS) * F / d + rollOff;
+        let yr = Math.ceil(y - 0.5);
+        if (yr >= ymin) continue;
+        if (yr < 0) yr = 0;
+
+        const fog = Math.pow(clamp01((d - 12) / (DSPAN - 10)), 1.15) * 0.88;
+        const fi = Math.min(NF - 1, Math.round(fog * (NF - 1)));
+        let band = bandOf(h), gi, si;
+
+        if (band === 0) {
+          // lake: flat, rippling crests
+          const w = noise(wx * 0.35, wz * 0.35 - time * 0.8);
+          if (w > 0.62) band = 1;
+          si = 3;
+          gi = contour ? 1 : WATER;
+        } else {
+          // sun from the left: compare with the height one world-step to the left
+          const hl = Math.max(heightAt(wx - 1.5, wz), WL);
+          const diff = hp - hl;
+          const shade = Math.max(0.45, Math.min(1.3, 1 + diff * 7));
+          si = Math.min(NS - 1, Math.max(0, Math.round((shade - 0.45) / 0.85 * (NS - 1))));
+          if (contour) {
+            const fr = (h * 14) % 1;
+            const onLine = fr < 0.12 || fr > 0.88;
+            gi = onLine ? 7 : 1;
+            if (!onLine) si = 0;
+          } else {
+            const b = clamp01(0.18 + 0.5 * h + (shade - 1) * 0.8);
+            gi = 1 + Math.min(8, Math.floor(b * 9));
+          }
+        }
+        const key = (band * NS + si) * NF + fi;
+        for (let r = yr; r < ymin; r++) emit(c, r, gi, key);
+        ymin = yr;
+      }
+      top[c] = ymin;
+    }
+    return top;
+  }
+  // CORE-END
+
+  if (typeof document === 'undefined') {
+    if (typeof module !== 'undefined') module.exports = { computeFrame, heightAt, GL };
+    return;
+  }
+
+  // ---------- page ----------
+  const CW = 10, CH = 15;
+  const FONT = '12px "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+  const SKY_TOP = '#140F1D', SKY_BOT = '#3A2340', GROUND = '#100B16';
+  const BASE = ['#274B73', '#7FB8D9', '#4A3263', '#7B4B94', '#D96C4F', '#F7EAD9'];
+  const FOG_RGB = [58, 35, 64];
+
+  const canvas = document.getElementById('view');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+  // colour LUT: band x shade (dark slopes facing away from the sun) x fog
+  const lut = [];
+  for (let b = 0; b < NB; b++) {
+    const base = hexRgb(BASE[b]);
+    for (let s = 0; s < NS; s++) {
+      const shade = 0.45 + (s / (NS - 1)) * 0.85;
+      const lit = shade <= 1 ? mix([12, 8, 18], base, shade) : mix(base, [255, 245, 230], (shade - 1) * 0.6);
+      for (let f = 0; f < NF; f++) {
+        const c = mix(lit, FOG_RGB, (f / (NF - 1)) * 0.88);
+        lut[(b * NS + s) * NF + f] = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+      }
+    }
+  }
+  const buckets = Array.from({ length: lut.length }, () => []);
+
+  let W, H, cols, rows, ox, oy, horizon, stars = [];
+  let speed = 1, alt = 0.8, contour = false, paused = false;
+  let camZ = 0, camY = 3, bankX = 0, roll = 0, time = 0, mouseNX = 0;
+  let rafId = 0, last = 0, acc = 0;
+
+  function mulberry32(seed) {
+    return () => {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.max(20, Math.floor(W / CW));
+    rows = Math.max(20, Math.floor(H / CH));
+    ox = (W - cols * CW) / 2;
+    oy = (H - rows * CH) / 2;
+    horizon = Math.round(rows * 0.18);
+    const rnd = mulberry32(1027);
+    stars = [];
+    const n = Math.floor(cols * horizon * 0.06);
+    for (let i = 0; i < n; i++) {
+      stars.push({ c: Math.floor(rnd() * cols), r: Math.floor(rnd() * Math.max(1, horizon - 2)),
+                   ch: rnd() > 0.85 ? '+' : '.', a: 0.2 + rnd() * 0.4, ph: rnd() * 6.28, sp: 0.3 + rnd() * 0.8 });
+    }
+  }
+
+  function groundUnderCamera() {
+    let g = 0;
+    for (let k = 0; k <= 8; k += 2) g = Math.max(g, Math.max(heightAt(bankX, camZ + k), 0.28));
+    return g * HS;
+  }
+
+  const px = c => ox + c * CW + CW / 2;
+  const py = r => oy + (r + 1) * CH - 4;
+
+  function render(steady) {
+    // sky
+    const g = ctx.createLinearGradient(0, oy, 0, oy + horizon * CH);
+    g.addColorStop(0, SKY_TOP);
+    g.addColorStop(1, SKY_BOT);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.font = FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    ctx.fillStyle = '#CBBFE0';
+    for (const s of stars) {
+      ctx.globalAlpha = steady ? s.a : s.a * (0.6 + 0.4 * Math.sin(time * s.sp + s.ph));
+      ctx.fillText(s.ch, px(s.c), py(s.r));
+    }
+    ctx.globalAlpha = 1;
+
+    // low sun on the left (the terrain is lit from the left)
+    const sc = Math.round(cols * 0.24), sr = horizon - 3;
+    const gx = px(sc), gy = py(sr + 1) - 5;
+    const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, CH * 5);
+    glow.addColorStop(0, 'rgba(255,190,130,0.22)');
+    glow.addColorStop(1, 'rgba(255,190,130,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(gx - CH * 5, gy - CH * 5, CH * 10, CH * 10);
+    const sun = ['*#*', '###', '*#*'];
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+      const ch = sun[j][i];
+      ctx.fillStyle = ch === '#' ? '#FFE3B0' : '#F2A86A';
+      ctx.fillText(ch, px(sc - 1 + i), py(sr + j));
+    }
+
+    // terrain
+    for (const b of buckets) b.length = 0;
+    const top = computeFrame(
+      { cols, rows, horizon, camZ, camY, bankX, roll, alt, contour, time },
+      (c, r, gi, key) => buckets[key].push(c, r, gi)
+    );
+
+    // dark backing under the silhouette so sky/sun never show through terrain
+    ctx.fillStyle = GROUND;
+    for (let c = 0; c < cols; c++) {
+      if (top[c] < rows) ctx.fillRect(ox + c * CW, oy + top[c] * CH, CW, (rows - top[c]) * CH + 1);
+    }
+    if (oy > 0) ctx.fillRect(0, oy + rows * CH, W, oy + 1);
+
+    for (let k = 0; k < buckets.length; k++) {
+      const bk = buckets[k];
+      if (!bk.length) continue;
+      ctx.fillStyle = lut[k];
+      for (let i = 0; i < bk.length; i += 3) ctx.fillText(GL[bk[i + 2]], px(bk[i]), py(bk[i + 1]));
+    }
+  }
+
+  function update(dt) {
+    time += dt;
+    camZ += dt * speed * 5;
+    const target = mouseNX * 25;
+    const prev = bankX;
+    bankX += (target - bankX) * (1 - Math.pow(0.5, dt / 0.9));
+    const rollTarget = Math.max(-1, Math.min(1, (bankX - prev) / Math.max(dt, 1e-3) / 14));
+    roll += (rollTarget - roll) * (1 - Math.pow(0.5, dt / 0.35));
+    const ty = groundUnderCamera() + alt;
+    camY += (ty - camY) * (1 - Math.pow(0.5, dt / 0.6));
+  }
+
+  function frame(ts) {
+    rafId = requestAnimationFrame(frame);
+    const now = ts / 1000;
+    const dt = last ? Math.min(0.1, now - last) : 0;
+    last = now;
+    acc += dt;
+    if (acc < 1 / 30) return;
+    update(acc);
+    acc = 0;
+    render(false);
+  }
+
+  function start() { if (!rafId) { last = 0; acc = 0; rafId = requestAnimationFrame(frame); } }
+  function stop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+  function running() { return !paused && !document.hidden && !reduce.matches; }
+  function renderOnce() {
+    if (reduce.matches) {
+      camZ = 140; bankX = 0; roll = 0;
+      camY = groundUnderCamera() + alt;
+      render(true);
+    } else {
+      camY = groundUnderCamera() + alt;
+      render(false);
+    }
+  }
+  function sync() { running() ? start() : (stop(), renderOnce()); }
+
+  // ---------- controls ----------
+  const speedEl = document.getElementById('speed'), speedOut = document.getElementById('speedOut');
+  const altEl = document.getElementById('alt'), altOut = document.getElementById('altOut');
+  const pauseBtn = document.getElementById('pause');
+  const modeBtns = document.querySelectorAll('[data-mode]');
+
+  speedEl.addEventListener('input', () => {
+    speed = +speedEl.value;
+    speedOut.textContent = speed.toFixed(1) + '×';
+  });
+  altEl.addEventListener('input', () => {
+    alt = +altEl.value;
+    altOut.textContent = Math.round(alt * 1000) + ' m';
+    if (!rafId) renderOnce();
+  });
+  modeBtns.forEach(btn => btn.addEventListener('click', () => {
+    contour = btn.dataset.mode === 'contour';
+    modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    if (!rafId) renderOnce();
+  }));
+
+  function togglePause() {
+    paused = !paused;
+    pauseBtn.setAttribute('aria-pressed', String(paused));
+    pauseBtn.textContent = paused ? '▶ Play' : '❚❚ Pause';
+    sync();
+  }
+  pauseBtn.addEventListener('click', togglePause);
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat) return;
+    if (e.target instanceof HTMLButtonElement) return;
+    e.preventDefault();
+    togglePause();
+  });
+
+  addEventListener('pointermove', e => {
+    if (reduce.matches || e.target.closest('.bar')) return;
+    mouseNX = Math.max(-1, Math.min(1, (e.clientX / W) * 2 - 1));
+  });
+
+  document.addEventListener('visibilitychange', sync);
+  reduce.addEventListener ? reduce.addEventListener('change', sync) : reduce.addListener(sync);
+
+  let resizeQueued = false;
+  addEventListener('resize', () => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => { resizeQueued = false; resize(); if (!rafId) renderOnce(); });
+  });
+
+  resize();
+  camY = groundUnderCamera() + alt;
+  renderOnce();
+  sync();
+})();
+</script>
+</body>
+</html>
