@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#060B16">
+<title>Wave Interference Table</title>
+<style>
+:root{color-scheme:dark;--bg:#060b16;--accent:#e8873a;--ink:#d8eeec;--muted:#879ba8;font-family:'Space Mono',ui-monospace,SFMono-Regular,Consolas,monospace}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);overflow:hidden}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}canvas:focus-visible{outline:1px solid var(--accent);outline-offset:-3px}header{position:fixed;left:30px;top:28px;pointer-events:none;text-shadow:0 2px 14px var(--bg)}h1{margin:0 0 9px;font-size:13px;font-weight:500;letter-spacing:.15em;text-transform:uppercase}header p{margin:0;font-size:9px;letter-spacing:.08em;color:var(--muted)}.edition{position:fixed;right:30px;top:30px;color:var(--muted);font-size:10px;pointer-events:none}.bar{position:fixed;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 28px);padding:14px 18px;display:flex;align-items:center;gap:20px;border-radius:14px;border:1px solid #9bc7dc20;background:#0d1825dd;backdrop-filter:blur(20px);box-shadow:0 16px 56px #0005}.field{display:grid;gap:8px;min-width:130px}.label{display:flex;justify-content:space-between;gap:16px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}output{color:var(--accent);font-variant-numeric:tabular-nums}input[type=range]{width:140px;height:18px;accent-color:var(--accent);margin:0;cursor:pointer}button{min-height:36px;padding:0 12px;font:inherit;font-size:11px;color:var(--ink);border:1px solid #ffffff20;border-radius:7px;background:#ffffff05;cursor:pointer}button:hover{border-color:#e8873a80;background:#e8873a0c}button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:4px}button:disabled{opacity:.45;cursor:default}#afterglow{color:var(--accent)}#afterglow[aria-pressed=true]{background:#e8873a18;border-color:#e8873a70}.actions{display:flex;gap:7px}.status{padding-left:17px;border-left:1px solid #ffffff18;min-width:119px;font-size:9px;color:var(--muted);line-height:1.9}.status strong{font-weight:400;color:var(--ink)}.dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:7px}.help{position:fixed;left:30px;bottom:112px;color:var(--muted);font-size:9px;pointer-events:none}#notice{color:var(--accent)}@media(max-width:850px){.bar{flex-wrap:wrap;justify-content:center;gap:14px;width:max-content}.status{display:none}.help{bottom:142px;left:20px}header{top:22px;left:20px}.edition{right:20px;top:24px}}@media(max-width:500px){.bar{width:calc(100% - 24px);padding:14px;gap:14px}.field{flex:1;min-width:100px}.field input{width:100%}.actions{width:100%;justify-content:center}.actions button{flex:1}.edition{display:none}h1{font-size:11px}header p{font-size:8px}.help{font-size:8px;bottom:155px;right:20px}}
+</style>
+</head>
+<body>
+<canvas id="water" tabindex="0" role="img" aria-label="Interactive ASCII wave interference table. Drag amber sources to move them. Tap water to add, or tap a source to remove it. Use Reset to restore three sources."></canvas>
+<header><h1>Wave Interference Table</h1><p>EVERY RIPPLE MEETS ANOTHER.</p></header><span class="edition">WAVE STUDY / 003</span>
+<div class="help">Drag to move · tap water to add · tap a source to remove <span id="notice" role="status"></span></div>
+<div class="bar" role="region" aria-label="Wave controls">
+<label class="field"><span class="label">Wavelength <output id="wavelengthValue" for="wavelength">16 cells</output></span><input id="wavelength" type="range" min="5" max="40" step="1" value="16" aria-label="Wavelength in grid cells"></label>
+<label class="field"><span class="label">Tempo <output id="tempoValue" for="tempo">1.8</output></span><input id="tempo" type="range" min="0" max="5" step="0.1" value="1.8" aria-label="Wave angular speed"></label>
+<div class="actions"><button id="afterglow" aria-pressed="false">Afterglow <span id="glowState">off</span></button><button id="reset">Reset</button><button id="pause" aria-pressed="false" aria-keyshortcuts="Space">Pause</button></div>
+<div class="status"><strong><span class="dot"></span><span id="state">Rippling</span></strong><br><span id="count">3</span> / 7 sources</div>
+</div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),canvas=$('water'),ctx=canvas.getContext('2d',{alpha:false});
+const TAU=2*Math.PI,FRAME_MS=1000/30,QUIET=.025;
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+let width=0,height=0,cols=0,rows=0,cw=10,ch=15,sources=[],history=new Float32Array(0),hasHistory=false;
+let wavelength=16,omega=1.8,phase=0,elapsed=0,afterglow=false,paused=false,raf=0,lastTime=null,accumulator=0,gesture=null,noticeTimer=0;
+// Store positions as fractions of the table so resizing preserves the arrangement.
+function triangle(){return [{x:.34,y:.39},{x:.66,y:.39},{x:.5,y:.66}];}
+function heightAt(x,y){let h=0;const k=TAU/wavelength;for(const s of sources){const dist=Math.hypot(x-s.x*cols,y-s.y*rows);h+=Math.sin(k*dist-phase)/(1+.06*dist);}return h/sources.length;}
+function rgb(hex){return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));}
+const stops=[[-1,rgb('#101E3C')],[0,rgb('#1F8A8C')],[.38,rgb('#72EFDD')],[1,rgb('#F2FFFC')]];
+function colorAt(h){let j=0;while(j<stops.length-2&&h>stops[j+1][0])j++;const f=Math.max(0,Math.min(1,(h-stops[j][0])/(stops[j+1][0]-stops[j][0])));return 'rgb('+stops[j][1].map((v,k)=>Math.round(v+(stops[j+1][1][k]-v)*f)).join(',')+')';}
+const colors=Array.from({length:1025},(_,i)=>colorAt(i/512-1));
+function character(h){if(Math.abs(h)<QUIET)return '·';if(h<-.35)return '.';if(h<-.12)return ':';if(h<0)return '-';if(h<.12)return '+';if(h<.3)return '*';if(h<.55)return '#';return '@';}
+function draw(blend=true){ctx.fillStyle='#060B16';ctx.fillRect(0,0,width,height);ctx.font='bold '+Math.min(ch*.93,cw/0.61)+'px "Space Mono", ui-monospace, monospace';ctx.textAlign='center';ctx.textBaseline='middle';for(let row=0;row<rows;row++){for(let col=0;col<cols;col++){const i=row*cols+col,raw=heightAt(col+.5,row+.5); // Blend signed height: an affine brightness mapping gives the same 65/35 blend.
+const h=afterglow&&hasHistory&&blend?.65*raw+.35*history[i]:raw;history[i]=h;
+// Use instantaneous cancellation for the quiet band, keeping nodal threads distinct even with afterglow.
+const quiet=Math.abs(raw)<QUIET;ctx.fillStyle=quiet?'#27434B':colors[Math.max(0,Math.min(1024,Math.round((h+1)*512)))];ctx.fillText(quiet?'·':character(h),(col+.5)*cw,(row+.5)*ch);}}
+hasHistory=true;ctx.fillStyle='#E8873A';const marker=reduced.matches?'@':Math.floor(elapsed*2)%2?'O':'@';for(const s of sources){const px=(Math.min(cols-1,Math.floor(s.x*cols))+.5)*cw,py=(Math.min(rows-1,Math.floor(s.y*rows))+.5)*ch;ctx.fillStyle='#060B16';ctx.fillRect(px-cw*.48,py-ch*.46,cw*.96,ch*.92);ctx.fillStyle='#E8873A';ctx.fillText(marker,px,py);}}
+function running(){return !paused&&!reduced.matches&&!document.hidden;}
+function schedule(){if(running()&&!raf)raf=requestAnimationFrame(frame);}
+function frame(now){raf=0;if(!running()){lastTime=null;return;}const dt=lastTime===null?0:Math.min(.1,(now-lastTime)/1000);lastTime=now;phase=(phase+omega*dt)%TAU;elapsed+=dt;accumulator+=dt;if(accumulator>=FRAME_MS/1000){accumulator%=FRAME_MS/1000;draw();}schedule();}
+function status(){$('pause').textContent=paused?'Resume':'Pause';$('pause').setAttribute('aria-pressed',String(paused));$('pause').disabled=reduced.matches;$('state').textContent=reduced.matches?'Still water':paused?'Paused':document.hidden?'Tab hidden':omega===0?'Standing still':'Rippling';$('count').textContent=sources.length;$('afterglow').setAttribute('aria-pressed',String(afterglow));$('glowState').textContent=afterglow?'on':'off';}
+function sync(){cancelAnimationFrame(raf);raf=0;lastTime=null;accumulator=0;status();schedule();}
+function refresh(){hasHistory=false;draw(false);status();}
+function resize(){width=innerWidth;height=innerHeight;const scale=Math.max(1,width/(200*10),height/(120*15));cols=Math.max(1,Math.min(200,Math.ceil(width/(10*scale))));rows=Math.max(1,Math.min(120,Math.ceil(height/(15*scale))));cw=width/cols;ch=height/rows;const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);history=new Float32Array(cols*rows);refresh();}
+function announce(message){clearTimeout(noticeTimer);$('notice').textContent=' · '+message;noticeTimer=setTimeout(()=>$('notice').textContent='',2200);}
+function hitSource(px,py,pointerType){const radius=pointerType==='touch'?26:Math.max(14,cw);let result=-1,best=radius;for(let i=0;i<sources.length;i++){const s=sources[i],sx=(Math.min(cols-1,Math.floor(s.x*cols))+.5)*cw,sy=(Math.min(rows-1,Math.floor(s.y*rows))+.5)*ch,d=Math.hypot(sx-px,sy-py);if(d<best){best=d;result=i;}}return result;}
+function position(e){const r=canvas.getBoundingClientRect();return {x:Math.max(0,Math.min(.999999,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(.999999,(e.clientY-r.top)/r.height))};}
+canvas.addEventListener('pointerdown',e=>{if(gesture||!e.isPrimary||(e.pointerType==='mouse'&&e.button!==0))return;const p=position(e);gesture={id:e.pointerId,index:hitSource(p.x*width,p.y*height,e.pointerType),startX:e.clientX,startY:e.clientY,startTime:performance.now(),moved:false,original:null};if(gesture.index>=0)gesture.original={...sources[gesture.index]};canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('pointermove',e=>{if(!gesture||gesture.id!==e.pointerId)return;if(Math.hypot(e.clientX-gesture.startX,e.clientY-gesture.startY)>6)gesture.moved=true;if(gesture.moved&&gesture.index>=0){sources[gesture.index]=position(e);if(!running())draw(false);}});
+canvas.addEventListener('pointerup',e=>{if(!gesture||gesture.id!==e.pointerId)return;const g=gesture;gesture=null;canvas.releasePointerCapture(e.pointerId);const moved=g.moved||Math.hypot(e.clientX-g.startX,e.clientY-g.startY)>6;if(moved&&g.index>=0){sources[g.index]=position(e);draw(false);}else if(!moved&&performance.now()-g.startTime<500){if(g.index>=0){if(sources.length>1){sources.splice(g.index,1);refresh();}else announce('Keep at least one source');}else if(sources.length<7){sources.push(position(e));refresh();}else announce('Maximum 7 sources');}status();});
+function cancelGesture(){if(gesture?.original){sources[gesture.index]=gesture.original;refresh();}gesture=null;}
+canvas.addEventListener('pointercancel',cancelGesture);canvas.addEventListener('lostpointercapture',()=>{if(gesture)cancelGesture();});
+$('wavelength').addEventListener('input',e=>{wavelength=Number(e.target.value);$('wavelengthValue').textContent=wavelength+' cells';refresh();});$('tempo').addEventListener('input',e=>{omega=Number(e.target.value);$('tempoValue').textContent=omega.toFixed(1);status();});
+$('afterglow').addEventListener('click',()=>{afterglow=!afterglow;refresh();});
+$('reset').addEventListener('click',()=>{gesture=null;sources=triangle();phase=elapsed=0;refresh();});
+function togglePause(){if(reduced.matches)return;paused=!paused;sync();}
+$('pause').addEventListener('click',togglePause);document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(e.target.tagName)){e.preventDefault();togglePause();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelGesture();sync();});window.addEventListener('resize',resize);reduced.addEventListener('change',()=>{sync();refresh();});
+sources=triangle();resize();sync();
+</script>
+</body>
+</html>
