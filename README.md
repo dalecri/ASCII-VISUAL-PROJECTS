@@ -24,6 +24,7 @@ Equations you can look at.
 | Piece | What it is |
 | --- | --- |
 | [ASCII Terrain Flyover](ascii-terrain-flyover.html) | Endless fBm mountains in real perspective, shaded by height and slope, with lakes in the valleys and a topographic contour mode. Bank with the mouse. |
+| [ASCII Map Generator](ascii-map-generator.html) | Procedural ASCII terrain maps, generated from a seed. Shelved here 2026-10-28 from its own repo during the consolidation. |
 | [Wave Interference Table](wave-interference-table.html) | Draggable ripple sources on dark water. Crests, troughs, and the quiet nodal threads where waves cancel each other. Optional phosphor afterglow. |
 | [Kaleidoscope Loom](kaleidoscope-loom.html) | Noise folded through mirror symmetry into living mandalas. 4 to 16 segments, three palettes, and a symmetry centre that follows your hand. |
 

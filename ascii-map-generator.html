@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ASCII Map Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            /* Prevent pull-to-refresh on mobile */
+            overscroll-behavior-y: contain;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            touch-action: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #475569;
+            cursor: pointer;
+            margin-top: -8px;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #e2e8f0;
+            border-radius: 2px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .action-pill {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        /**
+         * Simplex Noise Implementation
+         */
+        class SimplexNoise {
+            constructor(random = Math.random) {
+                this.p = new Uint8Array(256);
+                this.perm = new Uint8Array(512);
+                this.grad3 = [
+                    [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+                    [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+                    [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]
+                ];
+                for (let i = 0; i < 256; i++) this.p[i] = Math.floor(random() * 256);
+                for (let i = 0; i < 512; i++) this.perm[i] = this.p[i & 255];
+            }
+
+            dot(g, x, y) { return g[0] * x + g[1] * y; }
+
+            noise(xin, yin) {
+                const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+                const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+                let s = (xin + yin) * F2;
+                let i = Math.floor(xin + s);
+                let j = Math.floor(yin + s);
+                let t = (i + j) * G2;
+                let X0 = i - t;
+                let Y0 = j - t;
+                let x0 = xin - X0;
+                let y0 = yin - Y0;
+
+                let i1, j1;
+                if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
+
+                let x1 = x0 - i1 + G2;
+                let y1 = y0 - j1 + G2;
+                let x2 = x0 - 1.0 + 2.0 * G2;
+                let y2 = y0 - 1.0 + 2.0 * G2;
+
+                let ii = i & 255;
+                let jj = j & 255;
+                let gi0 = this.perm[ii + this.perm[jj]] % 12;
+                let gi1 = this.perm[ii + i1 + this.perm[jj + j1]] % 12;
+                let gi2 = this.perm[ii + 1 + this.perm[jj + 1]] % 12;
+
+                let t0 = 0.5 - x0 * x0 - y0 * y0;
+                let n0, n1, n2;
+                if (t0 < 0) n0 = 0.0;
+                else { t0 *= t0; n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0); }
+
+                let t1 = 0.5 - x1 * x1 - y1 * y1;
+                if (t1 < 0) n1 = 0.0;
+                else { t1 *= t1; n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1); }
+
+                let t2 = 0.5 - x2 * x2 - y2 * y2;
+                if (t2 < 0) n2 = 0.0;
+                else { t2 *= t2; n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2); }
+
+                return 70.0 * (n0 + n1 + n2);
+            }
+        }
+
+        const THEMES = {
+            terminal: {
+                bg: '#1a1b26',
+                accent: '#2ac3de',
+                types: [
+                    { threshold: 0.25, char: '≈', color: '#2ac3de' },
+                    { threshold: 0.35, char: '~', color: '#7dcfff' },
+                    { threshold: 0.42, char: '.', color: '#e0af68' },
+                    { threshold: 0.55, char: '"', color: '#9ece6a' },
+                    { threshold: 0.65, char: '♣', color: '#73daca' },
+                    { threshold: 0.80, char: '^', color: '#a9b1d6' },
+                    { threshold: 1.0,  char: '▲', color: '#c0caf5' }
+                ]
+            },
+            paper: {
+                bg: '#fdf6e3',
+                accent: '#268bd2',
+                types: [
+                    { threshold: 0.25, char: '≈', color: '#268bd2' },
+                    { threshold: 0.35, char: '~', color: '#2aa198' },
+                    { threshold: 0.42, char: '.', color: '#b58900' },
+                    { threshold: 0.55, char: 'v', color: '#859900' },
+                    { threshold: 0.65, char: 'T', color: '#586e75' },
+                    { threshold: 0.80, char: 'n', color: '#657b83' },
+                    { threshold: 1.0,  char: 'A', color: '#93a1a1' }
+                ]
+            },
+            dungeon: {
+                bg: '#0a0a0c',
+                accent: '#f43f5e',
+                types: [
+                    { threshold: 0.35, char: ' ', color: '#000000' },
+                    { threshold: 0.38, char: '.', color: '#334155' },
+                    { threshold: 0.45, char: '#', color: '#64748b' },
+                    { threshold: 0.60, char: '+', color: '#94a3b8' },
+                    { threshold: 0.75, char: 'o', color: '#cbd5e1' },
+                    { threshold: 1.0,  char: '@', color: '#f8fafc' }
+                ]
+            }
+        };
+
+        const Icons = {
+            Refresh: () => (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+            ),
+            Settings: () => (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            ),
+            Minimize: () => (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"></path><path d="M21 8h-3a2 2 0 0 1-2-2V3"></path><path d="M3 16h3a2 2 0 0 1 2 2v3"></path><path d="M16 21v-3a2 2 0 0 1 2-2h3"></path></svg>
+            ),
+            Download: () => (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            )
+        };
+
+        const getRandomParams = () => {
+            const themes = Object.keys(THEMES);
+            return {
+                seed: Math.random() * 10000,
+                themeKey: themes[Math.floor(Math.random() * themes.length)],
+                scale: Math.floor(Math.random() * (100 - 40 + 1)) + 40,
+                fontSize: Math.floor(Math.random() * (16 - 12 + 1)) + 12,
+                waterLevel: Number((Math.random() * 0.3 - 0.1).toFixed(2))
+            };
+        };
+
+        function App() {
+            const canvasRef = useRef(null);
+            const containerRef = useRef(null);
+            const initialParams = useMemo(() => getRandomParams(), []);
+
+            const [seed, setSeed] = useState(initialParams.seed);
+            const [scale, setScale] = useState(initialParams.scale);
+            const [fontSize, setFontSize] = useState(initialParams.fontSize);
+            const [waterLevel, setWaterLevel] = useState(initialParams.waterLevel); 
+            const [themeKey, setThemeKey] = useState(initialParams.themeKey);
+            const [showControls, setShowControls] = useState(false); 
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            const noise = useMemo(() => new SimplexNoise(() => {
+                const x = Math.sin(seed * 9999) * 10000;
+                return x - Math.floor(x);
+            }), [seed]);
+
+            const drawMap = useCallback(() => {
+                const canvas = canvasRef.current;
+                const container = containerRef.current;
+                if (!canvas || !container) return;
+
+                const dpr = window.devicePixelRatio || 1;
+                const rect = container.getBoundingClientRect();
+                
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+                
+                const theme = THEMES[themeKey];
+                const charWidth = fontSize * 0.6;
+                const charHeight = fontSize;
+                const cols = Math.ceil(rect.width / charWidth);
+                const rows = Math.ceil(rect.height / charHeight);
+
+                setIsGenerating(true);
+                ctx.fillStyle = theme.bg;
+                ctx.fillRect(0, 0, rect.width, rect.height);
+                ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+                ctx.textBaseline = 'top';
+
+                setTimeout(() => {
+                    for (let y = 0; y < rows; y++) {
+                        for (let x = 0; x < cols; x++) {
+                            const nx = x / (scale * 2);
+                            const ny = y / scale;
+                            
+                            let e = 1 * noise.noise(1 * nx, 1 * ny)
+                                  + 0.5 * noise.noise(2 * nx, 2 * ny)
+                                  + 0.25 * noise.noise(4 * nx, 4 * ny);
+                            
+                            e = (e + 1) / 2;
+                            const dx = x / cols - 0.5;
+                            const dy = y / rows - 0.5;
+                            const d = Math.sqrt(dx * dx + dy * dy) * 2;
+                            
+                            e = e + (0.3 - d * 0.5) - waterLevel; 
+                            e = Math.max(0, Math.min(1, e));
+
+                            let type = theme.types[0];
+                            for (let i = 0; i < theme.types.length; i++) {
+                                if (e <= theme.types[i].threshold) {
+                                    type = theme.types[i];
+                                    break;
+                                }
+                            }
+
+                            ctx.fillStyle = type.color;
+                            ctx.fillText(type.char, x * charWidth, y * charHeight);
+                        }
+                    }
+                    setIsGenerating(false);
+                }, 10);
+            }, [seed, scale, waterLevel, fontSize, themeKey, noise]);
+
+            useEffect(() => {
+                drawMap();
+            }, [drawMap]);
+
+            useEffect(() => {
+                const handleResize = () => setSeed(s => s);
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            const regenerate = () => {
+                const p = getRandomParams();
+                setSeed(p.seed);
+                setThemeKey(p.themeKey);
+                setScale(p.scale);
+                setFontSize(p.fontSize);
+                setWaterLevel(p.waterLevel);
+            };
+
+            const downloadMap = () => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                
+                const link = document.createElement('a');
+                link.download = `ascii-map-${Math.floor(seed)}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            };
+
+            return (
+                <div 
+                    className="relative w-full h-[100dvh] overflow-hidden" 
+                    ref={containerRef} 
+                    style={{ backgroundColor: THEMES[themeKey].bg }}
+                >
+                    <canvas ref={canvasRef} className="block w-full h-full cursor-crosshair" />
+
+                    {isGenerating && (
+                        <div className="absolute top-6 right-6 z-10">
+                           <div 
+                                className="w-3 h-3 md:w-4 md:h-4 rounded-full animate-pulse shadow-lg"
+                                style={{ 
+                                    backgroundColor: THEMES[themeKey].accent,
+                                    boxShadow: `0 0 15px ${THEMES[themeKey].accent}80`
+                                }}
+                            ></div>
+                        </div>
+                    )}
+
+                    {/* Branding Signature */}
+                    {!showControls && (
+                        <div className="absolute top-6 left-6 pointer-events-none opacity-30 mix-blend-overlay hidden md:block">
+                            <span className="text-[10px] font-mono text-white tracking-[0.4em] uppercase">
+                                ASCII Engine v1.6
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Settings Panel (Sidebar) */}
+                    <div className={`fixed top-0 left-0 w-full md:w-auto md:top-6 md:left-6 z-[60] transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${showControls ? 'translate-y-0 opacity-100' : '-translate-y-full md:-translate-x-[120%] opacity-0 pointer-events-none'}`}>
+                        <div className="glass-panel p-6 md:rounded-[2.5rem] shadow-2xl border-b md:border border-white/50 w-full md:w-80 text-slate-700 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center space-x-2">
+                                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm font-mono text-xl font-bold" style={{ backgroundColor: '#1e293b', color: THEMES[themeKey].accent }}>&gt;</div>
+                                    <h1 className="text-lg font-bold font-mono tracking-tighter text-slate-800 uppercase">Controls</h1>
+                                </div>
+                                <button onClick={() => setShowControls(false)} className="p-2 text-slate-400 hover:text-slate-600 md:hidden">
+                                    <Icons.Minimize />
+                                </button>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+                                    {['terminal', 'paper', 'dungeon'].map(t => (
+                                        <button key={t} onClick={() => setThemeKey(t)} className={`flex-1 py-1.5 text-[10px] uppercase font-bold tracking-widest rounded-xl transition-all ${themeKey === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
+                                            {t}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="space-y-5">
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
+                                            <span>Scale</span>
+                                            <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{scale}</span>
+                                        </div>
+                                        <input type="range" min="20" max="150" value={scale} onChange={(e) => setScale(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
+                                            <span>Density</span>
+                                            <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{fontSize}px</span>
+                                        </div>
+                                        <input type="range" min="8" max="24" step="1" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
+                                            <span>Sea Level</span>
+                                            <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{Math.round(waterLevel * 100)}%</span>
+                                        </div>
+                                        <input type="range" min="-0.2" max="0.5" step="0.01" value={waterLevel} onChange={(e) => setWaterLevel(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                    </div>
+                                </div>
+                                
+                                <div className="pt-2">
+                                    <button 
+                                        onClick={downloadMap}
+                                        className="w-full py-4 bg-slate-800 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-slate-700 transition-colors shadow-lg active:scale-[0.98]"
+                                    >
+                                        <Icons.Download />
+                                        Save Snapshot
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom Action Row - Fixed for Mobile Visibility */}
+                    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 md:left-6 md:translate-x-0 z-[100] flex items-center gap-3 md:gap-4">
+                        <div className="action-pill p-2 md:p-3 rounded-full flex items-center gap-3 md:gap-4 border border-white/40">
+                            <button 
+                                onClick={() => setShowControls(!showControls)} 
+                                className="p-3 md:p-4 bg-slate-800 text-white rounded-full shadow-md hover:scale-105 active:scale-90 transition-all border border-slate-700"
+                                title={showControls ? "Hide Controls" : "Show Controls"}
+                            >
+                                {showControls ? <Icons.Minimize /> : <Icons.Settings />}
+                            </button>
+                            
+                            <button 
+                                onClick={downloadMap} 
+                                className="p-3 md:p-4 bg-white text-slate-700 rounded-full shadow-md hover:scale-105 active:scale-90 transition-all border border-slate-200"
+                                title="Download Map PNG"
+                            >
+                                <Icons.Download />
+                            </button>
+
+                            <button 
+                                onClick={regenerate} 
+                                className="p-3 md:p-4 bg-white text-slate-700 rounded-full shadow-md hover:scale-105 active:scale-90 transition-all border border-slate-200 hover:rotate-180 duration-500"
+                                title="Regenerate Map"
+                            >
+                                <Icons.Refresh />
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
