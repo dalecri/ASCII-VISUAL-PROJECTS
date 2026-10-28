@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AsciiEngine Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #03070d;
+      --panel: #07101c;
+      --border: #16263b;
+      --text: #cbd5e1;
+      --muted: #64748b;
+      --accent: #38bdf8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Space Mono", "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 20px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    section {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    input[type="range"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    input[type="checkbox"],
+    select {
+      accent-color: var(--accent);
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button {
+      background: #0c1b2e;
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    #procedural-canvas {
+      display: block;
+      width: 100%;
+      height: 306px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      cursor: crosshair;
+    }
+
+    .drop-area {
+      border: 1px dashed #284263;
+      background: var(--bg);
+      border-radius: 4px;
+      padding: 14px;
+      text-align: center;
+      color: var(--muted);
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .drop-area.dragover,
+    .drop-area:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .drop-area input[type="file"] {
+      display: none;
+    }
+
+    .ascii-output {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 12px;
+      overflow-x: auto;
+      font-family: "Space Mono", "Courier New", monospace;
+      font-size: 9px;
+      line-height: 10px;
+      letter-spacing: 0;
+      white-space: pre;
+      color: var(--text);
+      min-height: 120px;
+    }
+
+    #snapshot-pre {
+      font-size: 11px;
+      line-height: 14px;
+    }
+
+    .meta-tag {
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. PROCEDURAL GRID RENDERER -->
+  <section>
+    <div class="section-header">
+      <h2>01 / Procedural</h2>
+      <div class="controls">
+        <span id="grid-dims" class="meta-tag">-- x --</span>
+        <button id="toggle-loop-btn" type="button">Pause</button>
+      </div>
+    </div>
+    <canvas id="procedural-canvas" aria-hidden="true"></canvas>
+  </section>
+
+  <!-- 2. IMAGE CONVERSION SAMPLER -->
+  <section>
+    <div class="section-header">
+      <h2>02 / Image Conversion</h2>
+      <div class="controls">
+        <label>
+          <input type="checkbox" id="color-toggle" checked>
+          Colour
+        </label>
+        <label>
+          <input type="checkbox" id="invert-toggle">
+          Invert
+        </label>
+        <label>
+          Ramp
+          <select id="ramp-select">
+            <option value="standard">standard</option>
+            <option value="detailed">detailed</option>
+            <option value="minimal">minimal</option>
+            <option value="blocks">blocks</option>
+          </select>
+        </label>
+        <label>
+          Cols: <span id="cols-val">80</span>
+          <input type="range" id="cols-slider" min="20" max="200" value="80">
+        </label>
+        <button id="copy-text-btn" type="button">Copy text</button>
+      </div>
+    </div>
+
+    <label class="drop-area" id="drop-zone">
+      <input type="file" id="file-input" accept="image/*">
+      <span id="drop-label">Drop image or click to load (Sample Koi loaded)</span>
+    </label>
+
+    <pre id="conversion-pre" class="ascii-output"></pre>
+  </section>
+
+  <!-- 3. STATIC SNAPSHOT -->
+  <section>
+    <div class="section-header">
+      <h2>03 / Static Snapshot</h2>
+      <div class="controls">
+        <button id="snapshot-btn" type="button">Snapshot frame</button>
+        <button id="copy-snapshot-btn" type="button">Copy snapshot</button>
+      </div>
+    </div>
+    <pre id="snapshot-pre" class="ascii-output"></pre>
+  </section>
+
+  <!-- INLINE ENGINE SOURCE (also matches ascii-engine.js deliverable identically) -->
+  <script>
+    (function (global) {
+      'use strict';
+
+      var PRIORITY = {
+        BG: 0,
+        LOW: 1,
+        MID: 2,
+        HIGH: 3,
+        FX: 4,
+        TOP: 5
+      };
+
+      var RAMPS = {
+        standard: ' .:-=+*#%@',
+        detailed: '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
+        minimal:  ' .+#@',
+        blocks:   ' ░▒▓█'
+      };
+
+      var DEFAULTS = {
+        cellW: 12,
+        cellH: 17,
+        fontSize: 13,
+        fontFamily: '"Space Mono", "Courier New", monospace',
+        background: '#03070d',
+        autoResize: true,
+        resizeDebounceMs: 120
+      };
+
+      function create(canvas, options) {
+        if (!canvas || typeof canvas.getContext !== 'function') {
+          throw new Error('AsciiEngine.create requires a valid HTMLCanvasElement.');
+        }
+
+        var opts = Object.assign({}, DEFAULTS, options || {});
+        var ctx = canvas.getContext('2d');
+
+        var cellW = Number(opts.cellW) || DEFAULTS.cellW;
+        var cellH = Number(opts.cellH) || DEFAULTS.cellH;
+        var fontSize = Number(opts.fontSize) || DEFAULTS.fontSize;
+        var fontFamily = opts.fontFamily || DEFAULTS.fontFamily;
+        var background = opts.background !== undefined ? opts.background : DEFAULTS.background;
+
+        var cols = 0;
+        var rows = 0;
+        var cssWidth = 0;
+        var cssHeight = 0;
+
+        var chars = [];
+        var priorities = new Float64Array(0);
+        var colors = [];
+
+        var rafId = null;
+        var isRunning = false;
+        var frameCallback = null;
+        var lastFrameTime = 0;
+        var elapsedTotal = 0;
+        var resizeTimer = null;
+
+        function resize() {
+          var rect = canvas.getBoundingClientRect();
+          var dpr = global.devicePixelRatio || 1;
+
+          cssWidth = rect.width || canvas.clientWidth || Number(canvas.getAttribute('width')) || 300;
+          cssHeight = rect.height || canvas.clientHeight || Number(canvas.getAttribute('height')) || 150;
+
+          var targetWidth = Math.max(1, Math.round(cssWidth * dpr));
+          var targetHeight = Math.max(1, Math.round(cssHeight * dpr));
+
+          if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+          }
+
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.font = fontSize + 'px ' + fontFamily;
+          ctx.textBaseline = 'top';
+
+          var newCols = Math.max(1, Math.floor(cssWidth / cellW));
+          var newRows = Math.max(1, Math.floor(cssHeight / cellH));
+
+          if (newCols !== cols || newRows !== rows) {
+            cols = newCols;
+            rows = newRows;
+            var totalCells = cols * rows;
+            chars = new Array(totalCells);
+            colors = new Array(totalCells);
+            priorities = new Float64Array(totalCells);
+          }
+
+          clear();
+        }
+
+        function clear() {
+          var total = cols * rows;
+          for (var i = 0; i < total; i++) {
+            chars[i] = ' ';
+            colors[i] = '';
+            priorities[i] = -Infinity;
+          }
+        }
+
+        function stampCell(gx, gy, char, color, priority) {
+          var x = gx | 0;
+          var y = gy | 0;
+          if (x < 0 || x >= cols || y < 0 || y >= rows) return;
+          if (!char) return;
+
+          var prio = priority !== undefined ? Number(priority) : PRIORITY.BG;
+          var idx = y * cols + x;
+
+          if (prio > priorities[idx]) {
+            chars[idx] = String(char).charAt(0);
+            colors[idx] = color || '#ffffff';
+            priorities[idx] = prio;
+          }
+        }
+
+        function stampPx(x, y, char, color, priority) {
+          var gx = Math.floor(x / cellW);
+          var gy = Math.floor(y / cellH);
+          stampCell(gx, gy, char, color, priority);
+        }
+
+        function stampText(gx, gy, text, color, priority) {
+          if (text === null || text === undefined) return;
+          var str = String(text);
+          var baseX = gx | 0;
+          var baseY = gy | 0;
+          if (baseY < 0 || baseY >= rows) return;
+
+          for (var i = 0; i < str.length; i++) {
+            stampCell(baseX + i, baseY, str.charAt(i), color, priority);
+          }
+        }
+
+        function render() {
+          if (background) {
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, cssWidth, cssHeight);
+          } else {
+            ctx.clearRect(0, 0, cssWidth, cssHeight);
+          }
+
+          ctx.font = fontSize + 'px ' + fontFamily;
+          ctx.textBaseline = 'top';
+
+          var padX = Math.max(0, Math.floor((cellW - fontSize * 0.6) * 0.5));
+          var padY = Math.max(0, Math.floor((cellH - fontSize) * 0.5));
+
+          var activeStyle = null;
+          var total = cols * rows;
+
+          for (var i = 0; i < total; i++) {
+            if (priorities[i] === -Infinity) continue;
+            var ch = chars[i];
+            if (ch === ' ' || ch === '') continue;
+
+            var c = colors[i];
+            if (c !== activeStyle) {
+              ctx.fillStyle = c;
+              activeStyle = c;
+            }
+
+            var gx = i % cols;
+            var gy = (i / cols) | 0;
+            ctx.fillText(ch, gx * cellW + padX, gy * cellH + padY);
+          }
+        }
+
+        function toText() {
+          var rowStrings = new Array(rows);
+          for (var y = 0; y < rows; y++) {
+            var line = '';
+            var rowOffset = y * cols;
+            for (var x = 0; x < cols; x++) {
+              var idx = rowOffset + x;
+              var ch = priorities[idx] === -Infinity ? ' ' : chars[idx];
+              line += ch || ' ';
+            }
+            rowStrings[y] = line;
+          }
+          return {
+            plain: rowStrings.join('\n'),
+            rows: rowStrings
+          };
+        }
+
+        function prefersReducedMotion() {
+          return Boolean(
+            global.matchMedia &&
+            global.matchMedia('(prefers-reduced-motion: reduce)').matches
+          );
+        }
+
+        function tick(now) {
+          if (!isRunning) return;
+
+          if (typeof document !== 'undefined' && document.hidden) {
+            lastFrameTime = 0;
+            rafId = requestAnimationFrame(tick);
+            return;
+          }
+
+          if (!lastFrameTime) {
+            lastFrameTime = now;
+          }
+
+          var dtMs = Math.min(100, Math.max(0, now - lastFrameTime));
+          lastFrameTime = now;
+          elapsedTotal += dtMs;
+
+          if (frameCallback) {
+            frameCallback(engine, elapsedTotal, dtMs);
+          }
+
+          if (isRunning) {
+            rafId = requestAnimationFrame(tick);
+          }
+        }
+
+        function start(callback) {
+          if (typeof callback === 'function') {
+            frameCallback = callback;
+          }
+          if (!frameCallback) return;
+
+          if (prefersReducedMotion()) {
+            stop();
+            frameCallback(engine, elapsedTotal, 0);
+            return;
+          }
+
+          if (isRunning) return;
+          isRunning = true;
+          lastFrameTime = 0;
+          rafId = requestAnimationFrame(tick);
+        }
+
+        function stop() {
+          isRunning = false;
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+        }
+
+        if (typeof global.addEventListener === 'function') {
+          if (opts.autoResize !== false) {
+            global.addEventListener('resize', function () {
+              if (resizeTimer) clearTimeout(resizeTimer);
+              resizeTimer = setTimeout(function () {
+                resize();
+                if (!isRunning && frameCallback) {
+                  frameCallback(engine, elapsedTotal, 0);
+                }
+              }, opts.resizeDebounceMs);
+            });
+          }
+
+          if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', function () {
+              if (!document.hidden && isRunning) {
+                lastFrameTime = performance.now();
+              }
+            });
+          }
+        }
+
+        var engine = {
+          resize: resize,
+          clear: clear,
+          stampCell: stampCell,
+          stampPx: stampPx,
+          stampText: stampText,
+          render: render,
+          start: start,
+          stop: stop,
+          toText: toText,
+          get cols() {
+            return cols;
+          },
+          get rows() {
+            return rows;
+          }
+        };
+
+        resize();
+        return engine;
+      }
+
+      function getSourceDimensions(source) {
+        if (!source) return { width: 0, height: 0 };
+        var w =
+          source.naturalWidth ||
+          source.videoWidth ||
+          source.width ||
+          (source.getBoundingClientRect ? source.getBoundingClientRect().width : 0);
+        var h =
+          source.naturalHeight ||
+          source.videoHeight ||
+          source.height ||
+          (source.getBoundingClientRect ? source.getBoundingClientRect().height : 0);
+        return { width: Number(w) || 0, height: Number(h) || 0 };
+      }
+
+      function fromImage(source, options) {
+        var opts = Object.assign(
+          {
+            cols: 80,
+            ramp: RAMPS.standard,
+            color: true,
+            invert: false,
+            charAspect: 0.55
+          },
+          options || {}
+        );
+
+        var dims = getSourceDimensions(source);
+        if (dims.width <= 0 || dims.height <= 0) {
+          return { plain: '', rows: [], colors: opts.color ? [] : null };
+        }
+
+        var targetCols = Math.max(1, Math.round(Number(opts.cols) || 80));
+        var charAspect = Number(opts.charAspect) || 0.55;
+        var targetRows = Math.max(
+          1,
+          Math.round((dims.height / dims.width) * targetCols * charAspect)
+        );
+
+        var ramp =
+          typeof opts.ramp === 'string' && opts.ramp.length > 0
+            ? opts.ramp
+            : RAMPS.standard;
+        var rampLen = ramp.length;
+
+        var offscreen = document.createElement('canvas');
+        offscreen.width = targetCols;
+        offscreen.height = targetRows;
+
+        var octx = offscreen.getContext('2d', { willReadFrequently: true });
+        octx.clearRect(0, 0, targetCols, targetRows);
+        octx.drawImage(source, 0, 0, targetCols, targetRows);
+
+        var imgData = octx.getImageData(0, 0, targetCols, targetRows).data;
+        var outRows = new Array(targetRows);
+        var outColors = opts.color ? new Array(targetRows) : null;
+
+        for (var y = 0; y < targetRows; y++) {
+          var line = '';
+          var colorRow = opts.color ? new Array(targetCols) : null;
+
+          for (var x = 0; x < targetCols; x++) {
+            var offset = (y * targetCols + x) * 4;
+            var r = imgData[offset];
+            var g = imgData[offset + 1];
+            var b = imgData[offset + 2];
+            var a = imgData[offset + 3];
+
+            if (a === 0) {
+              line += ' ';
+              if (colorRow) colorRow[x] = 'transparent';
+              continue;
+            }
+
+            var lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+            if (opts.invert) {
+              lum = 1 - lum;
+            }
+
+            var rampIdx = Math.min(
+              rampLen - 1,
+              Math.max(0, Math.floor(lum * rampLen))
+            );
+            line += ramp.charAt(rampIdx);
+
+            if (colorRow) {
+              colorRow[x] = 'rgb(' + r + ',' + g + ',' + b + ')';
+            }
+          }
+
+          outRows[y] = line;
+          if (outColors) outColors[y] = colorRow;
+        }
+
+        return {
+          plain: outRows.join('\n'),
+          rows: outRows,
+          colors: outColors
+        };
+      }
+
+      function renderToPre(preElement, result) {
+        if (!preElement || !result) return;
+
+        if (!result.colors) {
+          preElement.textContent = result.plain || '';
+          return;
+        }
+
+        preElement.textContent = '';
+        var frag = document.createDocumentFragment();
+        var rows = result.rows || [];
+        var colors = result.colors || [];
+
+        for (var y = 0; y < rows.length; y++) {
+          var rowStr = rows[y];
+          var colorRow = colors[y] || [];
+          var runChars = '';
+          var runColor = null;
+
+          for (var x = 0; x < rowStr.length; x++) {
+            var ch = rowStr.charAt(x);
+            var col = colorRow[x] || '';
+
+            if (col === runColor) {
+              runChars += ch;
+            } else {
+              if (runChars.length > 0) {
+                appendRun(frag, runChars, runColor);
+              }
+              runColor = col;
+              runChars = ch;
+            }
+          }
+
+          if (runChars.length > 0) {
+            appendRun(frag, runChars, runColor);
+          }
+
+          if (y < rows.length - 1) {
+            frag.appendChild(document.createTextNode('\n'));
+          }
+        }
+
+        preElement.appendChild(frag);
+      }
+
+      function appendRun(fragment, text, color) {
+        if (!color || color === 'transparent' || text.trim() === '') {
+          fragment.appendChild(document.createTextNode(text));
+        } else {
+          var span = document.createElement('span');
+          span.style.color = color;
+          span.textContent = text;
+          fragment.appendChild(span);
+        }
+      }
+
+      global.AsciiEngine = {
+        PRIORITY: PRIORITY,
+        RAMPS: RAMPS,
+        create: create,
+        fromImage: fromImage,
+        renderToPre: renderToPre
+      };
+    })(typeof window !== 'undefined' ? window : globalThis);
+  </script>
+
+  <!-- DEMO APPLICATION SCRIPT -->
+  <script>
+    (function () {
+      'use strict';
+
+      var P = AsciiEngine.PRIORITY;
+
+      // ========================================================================
+      // SECTION 1: PROCEDURAL KOI POND SCENE (6 PRIORITY LEVELS + STAMPTEXT)
+      // ========================================================================
+      var canvas = document.getElementById('procedural-canvas');
+      var dimsLabel = document.getElementById('grid-dims');
+      var toggleBtn = document.getElementById('toggle-loop-btn');
+
+      var engine = AsciiEngine.create(canvas, {
+        cellW: 12,
+        cellH: 17,
+        fontSize: 13,
+        fontFamily: '"Space Mono", "Courier New", monospace',
+        background: '#03070d'
+      });
+
+      var koiList = [
+        { x: 18, y: 6, vx: 0.042, vy: 0.012, phase: 0.0, bodyColor: '#fb7185', finColor: '#fda4af' },
+        { x: 52, y: 12, vx: -0.036, vy: -0.01, phase: 2.2, bodyColor: '#f59e0b', finColor: '#fde68a' },
+        { x: 34, y: 10, vx: 0.028, vy: -0.014, phase: 4.1, bodyColor: '#e2e8f0', finColor: '#94a3b8' }
+      ];
+
+      var ripples = [
+        { gx: 26, gy: 8, radius: 1.5, maxRadius: 9 }
+      ];
+
+      canvas.addEventListener('pointerdown', function (e) {
+        var rect = canvas.getBoundingClientRect();
+        var px = e.clientX - rect.left;
+        var py = e.clientY - rect.top;
+        // Immediate pixel-coordinate stamp + expanding ripple
+        engine.stampPx(px, py, '@', '#7dd3fc', P.FX);
+        ripples.push({
+          gx: Math.floor(px / 12),
+          gy: Math.floor(py / 17),
+          radius: 0.5,
+          maxRadius: 11
+        });
+      });
+
+      function drawPondFrame(eng, timeMs, dtMs) {
+        var t = timeMs * 0.001;
+        var dt = dtMs || 16;
+
+        dimsLabel.textContent = eng.cols + ' cols × ' + eng.rows + ' rows';
+        eng.clear();
+
+        // Priority 0 (BG): gentle water current texture
+        for (var y = 0; y < eng.rows; y++) {
+          for (var x = 0; x < eng.cols; x++) {
+            var w = Math.sin(x * 0.19 + t * 1.1) + Math.cos(y * 0.31 - t * 0.8);
+            if (w > 1.45) {
+              eng.stampCell(x, y, '~', '#0f2942', P.BG);
+            } else if (w < -1.55) {
+              eng.stampCell(x, y, '.', '#0b1d30', P.BG);
+            }
+          }
+        }
+
+        // Priority 1 (LOW): submerged pebbles
+        var pebbles = [
+          [8, 4], [9, 4], [14, 14], [15, 14], [64, 5], [45, 15], [70, 13]
+        ];
+        for (var p = 0; p < pebbles.length; p++) {
+          eng.stampCell(pebbles[p][0] % eng.cols, pebbles[p][1] % eng.rows, 'o', '#1e293b', P.LOW);
+        }
+
+        // Update & draw koi across Priority 2 (MID: fins/tail), Priority 3 (HIGH: body), Priority 5 (TOP: eyes)
+        for (var i = 0; i < koiList.length; i++) {
+          var k = koiList[i];
+          k.x += k.vx * (dt * 0.16);
+          k.y += k.vy * (dt * 0.16);
+
+          if (k.x < 6) { k.x = 6; k.vx *= -1; }
+          if (k.x > eng.cols - 7) { k.x = eng.cols - 7; k.vx *= -1; }
+          if (k.y < 2) { k.y = 2; k.vy *= -1; }
+          if (k.y > eng.rows - 3) { k.y = eng.rows - 3; k.vy *= -1; }
+
+          var dir = k.vx >= 0 ? 1 : -1;
+          var cx = Math.round(k.x);
+          var cy = Math.round(k.y);
+          var sway = Math.round(Math.sin(t * 6 + k.phase));
+
+          // Priority 2 (MID): tail & side fins
+          eng.stampCell(cx - dir * 3, cy + sway, dir > 0 ? '<' : '>', k.finColor, P.MID);
+          eng.stampCell(cx - dir * 4, cy + sway, '~', k.finColor, P.MID);
+          eng.stampCell(cx - dir * 1, cy - 1, '/', k.finColor, P.MID);
+          eng.stampCell(cx - dir * 1, cy + 1, '\\', k.finColor, P.MID);
+
+          // Priority 3 (HIGH): koi body segments
+          eng.stampCell(cx - dir * 2, cy, '#', k.bodyColor, P.HIGH);
+          eng.stampCell(cx - dir * 1, cy, '#', k.bodyColor, P.HIGH);
+          eng.stampCell(cx, cy, '@', k.bodyColor, P.HIGH);
+          eng.stampCell(cx + dir * 1, cy, dir > 0 ? ')' : '(', k.bodyColor, P.HIGH);
+
+          // Priority 5 (TOP): koi eye
+          eng.stampCell(cx + dir * 1, cy, '*', '#ffffff', P.TOP);
+        }
+
+        // Priority 4 (FX): expanding surface ripples
+        if (Math.random() < 0.03 && ripples.length < 5) {
+          ripples.push({
+            gx: Math.floor(Math.random() * eng.cols),
+            gy: Math.floor(Math.random() * eng.rows),
+            radius: 0.5,
+            maxRadius: 9
+          });
+        }
+
+        for (var r = ripples.length - 1; r >= 0; r--) {
+          var rp = ripples[r];
+          rp.radius += dt * 0.0045;
+          if (rp.radius >= rp.maxRadius) {
+            ripples.splice(r, 1);
+            continue;
+          }
+          var steps = 16;
+          for (var s = 0; s < steps; s++) {
+            var angle = (s / steps) * Math.PI * 2;
+            var rx = Math.round(rp.gx + Math.cos(angle) * rp.radius * 1.4);
+            var ry = Math.round(rp.gy + Math.sin(angle) * rp.radius);
+            eng.stampCell(rx, ry, 'o', '#38bdf8', P.FX);
+          }
+        }
+
+        // stampText for one word at TOP priority
+        eng.stampText(2, 1, 'POND', '#38bdf8', P.TOP);
+
+        eng.render();
+      }
+
+      var loopPaused = false;
+      engine.start(drawPondFrame);
+
+      toggleBtn.addEventListener('click', function () {
+        if (loopPaused) {
+          engine.start(drawPondFrame);
+          toggleBtn.textContent = 'Pause';
+          loopPaused = false;
+        } else {
+          engine.stop();
+          toggleBtn.textContent = 'Resume';
+          loopPaused = true;
+        }
+      });
+
+      // ========================================================================
+      // SECTION 2: IMAGE CONVERSION (SAMPLE CANVAS + DRAG/DROP + CONTROLS)
+      // ========================================================================
+      var colorToggle = document.getElementById('color-toggle');
+      var invertToggle = document.getElementById('invert-toggle');
+      var rampSelect = document.getElementById('ramp-select');
+      var colsSlider = document.getElementById('cols-slider');
+      var colsVal = document.getElementById('cols-val');
+      var copyTextBtn = document.getElementById('copy-text-btn');
+      var dropZone = document.getElementById('drop-zone');
+      var dropLabel = document.getElementById('drop-label');
+      var fileInput = document.getElementById('file-input');
+      var conversionPre = document.getElementById('conversion-pre');
+
+      var activeSource = createSampleArtworkCanvas();
+      var latestConversion = null;
+
+      function createSampleArtworkCanvas() {
+        var c = document.createElement('canvas');
+        c.width = 320;
+        c.height = 180;
+        var g = c.getContext('2d');
+
+        // Deep pond radial background
+        var bgGrad = g.createRadialGradient(160, 90, 15, 160, 90, 170);
+        bgGrad.addColorStop(0, '#0f2942');
+        bgGrad.addColorStop(1, '#02060d');
+        g.fillStyle = bgGrad;
+        g.fillRect(0, 0, c.width, c.height);
+
+        // Lily pads
+        g.fillStyle = '#15803d';
+        g.beginPath();
+        g.arc(65, 48, 28, 0.2, Math.PI * 1.9);
+        g.lineTo(65, 48);
+        g.fill();
+
+        g.fillStyle = '#166534';
+        g.beginPath();
+        g.arc(255, 135, 32, 1.1, Math.PI * 2.8);
+        g.lineTo(255, 135);
+        g.fill();
+
+        // Bright orange/gold koi silhouette
+        var koiGrad = g.createLinearGradient(85, 60, 235, 120);
+        koiGrad.addColorStop(0, '#fb7185');
+        koiGrad.addColorStop(0.55, '#f97316');
+        koiGrad.addColorStop(1, '#fde047');
+        g.fillStyle = koiGrad;
+        g.beginPath();
+        g.ellipse(160, 90, 62, 24, -0.18, 0, Math.PI * 2);
+        g.fill();
+
+        // Tail fin
+        g.fillStyle = '#fda4af';
+        g.beginPath();
+        g.moveTo(100, 98);
+        g.lineTo(58, 72);
+        g.lineTo(66, 124);
+        g.closePath();
+        g.fill();
+
+        // White dorsal marking & eye
+        g.fillStyle = '#ffffff';
+        g.beginPath();
+        g.ellipse(175, 84, 22, 9, -0.18, 0, Math.PI * 2);
+        g.fill();
+
+        g.fillStyle = '#03070d';
+        g.beginPath();
+        g.arc(206, 80, 4, 0, Math.PI * 2);
+        g.fill();
+
+        return c;
+      }
+
+      function updateImageConversion() {
+        colsVal.textContent = colsSlider.value;
+        var rampName = rampSelect.value;
+        latestConversion = AsciiEngine.fromImage(activeSource, {
+          cols: Number(colsSlider.value),
+          ramp: AsciiEngine.RAMPS[rampName] || AsciiEngine.RAMPS.standard,
+          color: colorToggle.checked,
+          invert: invertToggle.checked,
+          charAspect: 0.55
+        });
+        AsciiEngine.renderToPre(conversionPre, latestConversion);
+      }
+
+      colorToggle.addEventListener('change', updateImageConversion);
+      invertToggle.addEventListener('change', updateImageConversion);
+      rampSelect.addEventListener('change', updateImageConversion);
+      colsSlider.addEventListener('input', updateImageConversion);
+
+      function loadFile(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        var img = new Image();
+        img.onload = function () {
+          activeSource = img;
+          dropLabel.textContent = 'Loaded: ' + file.name;
+          updateImageConversion();
+          URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(file);
+      }
+
+      fileInput.addEventListener('change', function (e) {
+        if (e.target.files && e.target.files[0]) {
+          loadFile(e.target.files[0]);
+        }
+      });
+
+      dropZone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+
+      dropZone.addEventListener('dragleave', function () {
+        dropZone.classList.remove('dragover');
+      });
+
+      dropZone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          loadFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      function copyStringToClipboard(text, btn, defaultLabel) {
+        if (!text) return;
+        var finish = function () {
+          btn.textContent = 'Copied';
+          setTimeout(function () {
+            btn.textContent = defaultLabel;
+          }, 1200);
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(finish).catch(function () {
+            fallbackCopy(text, finish);
+          });
+        } else {
+          fallbackCopy(text, finish);
+        }
+      }
+
+      function fallbackCopy(text, callback) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          if (callback) callback();
+        } catch (err) {}
+        document.body.removeChild(ta);
+      }
+
+      copyTextBtn.addEventListener('click', function () {
+        if (latestConversion) {
+          copyStringToClipboard(latestConversion.plain, copyTextBtn, 'Copy text');
+        }
+      });
+
+      updateImageConversion();
+
+      // ========================================================================
+      // SECTION 3: STATIC SNAPSHOT TO <PRE>
+      // ========================================================================
+      var snapshotBtn = document.getElementById('snapshot-btn');
+      var copySnapshotBtn = document.getElementById('copy-snapshot-btn');
+      var snapshotPre = document.getElementById('snapshot-pre');
+
+      function captureProceduralSnapshot() {
+        var snap = engine.toText();
+        snapshotPre.textContent = snap.plain;
+      }
+
+      snapshotBtn.addEventListener('click', captureProceduralSnapshot);
+      copySnapshotBtn.addEventListener('click', function () {
+        copyStringToClipboard(snapshotPre.textContent, copySnapshotBtn, 'Copy snapshot');
+      });
+
+      // Populate initial snapshot on load
+      captureProceduralSnapshot();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#69b44c">
+<title>LITTLE VALE</title>
+<style>
+/* =====================================================================
+   CSS: page, HUD, message bar, mute button, touch controls, ending panel
+   ===================================================================== */
+:root {
+  --hud-ink: #1f2b17;
+  --halo: rgba(250, 255, 235, 0.9);
+  --bar-bg: rgba(24, 32, 20, 0.66);
+  --bar-ink: #f6f2e4;
+  --gold: #ffe066;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: #69b44c;               /* grass, so nothing ever flashes dark */
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  font-family: "Courier New", Courier, monospace;
+}
+canvas#world { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+/* HUD: quiet text, top left */
+#hud {
+  position: fixed; top: calc(10px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left));
+  color: var(--hud-ink); font-weight: bold; font-size: 14px; line-height: 1.35;
+  text-shadow: 0 0 3px var(--halo), 0 0 6px var(--halo), 0 0 1px var(--halo);
+  pointer-events: none;
+}
+#hud .title { font-size: 16px; letter-spacing: 0.18em; margin-bottom: 2px; }
+
+/* Mute toggle, top right */
+#mute {
+  position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right));
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 0; padding: 0; cursor: pointer;
+  background: rgba(250, 255, 235, 0.55); color: var(--hud-ink);
+  display: grid; place-items: center;
+  box-shadow: 0 1px 4px rgba(30, 50, 20, 0.25);
+}
+#mute:focus-visible, #again:focus-visible { outline: 2px solid var(--hud-ink); outline-offset: 2px; }
+#mute svg { width: 22px; height: 22px; }
+#mute .on { display: none; }
+#mute[aria-pressed="true"] .on { display: inline; }
+#mute[aria-pressed="true"] .off { display: none; }
+
+/* One-line message bar, bottom centre */
+#msg {
+  position: fixed; left: 0; right: 0; margin: 0 auto; width: fit-content;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  max-width: min(92vw, 640px);
+  padding: 8px 14px; border-radius: 8px;
+  background: var(--bar-bg); color: var(--bar-ink);
+  font-size: 15px; line-height: 1.35; text-align: center;
+  opacity: 0; transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+#msg.show { opacity: 1; }
+body.touch #msg { font-size: 14px; max-width: calc(100vw - 360px); }   /* between the D-pad and button */
+@media (orientation: portrait) {
+  body.touch #msg { bottom: calc(158px + env(safe-area-inset-bottom)); max-width: 92vw; }
+}
+
+/* Touch controls: only on touch devices */
+#touch { display: none; }
+body.touch #touch { display: block; }
+#dpad, #act {
+  position: fixed; bottom: calc(18px + env(safe-area-inset-bottom));
+  touch-action: none; -webkit-user-select: none; user-select: none;
+}
+#dpad {
+  left: calc(16px + env(safe-area-inset-left));
+  width: 128px; height: 128px; border-radius: 50%;
+  background: rgba(250, 255, 235, 0.32);
+  border: 2px solid rgba(250, 255, 235, 0.55);
+}
+#dpad span {
+  position: absolute; width: 40px; height: 40px; display: grid; place-items: center;
+  font: bold 20px "Courier New", Courier, monospace; color: rgba(31, 43, 23, 0.75);
+  pointer-events: none;
+}
+#dpad .u { left: 42px; top: 2px; }
+#dpad .d { left: 42px; bottom: 2px; }
+#dpad .l { left: 2px; top: 42px; }
+#dpad .r { right: 2px; top: 42px; }
+#dpad.active { background: rgba(250, 255, 235, 0.45); }
+#act {
+  right: calc(20px + env(safe-area-inset-right));
+  width: 76px; height: 76px; border-radius: 50%;
+  border: 2px solid rgba(250, 255, 235, 0.6);
+  background: rgba(250, 255, 235, 0.32);
+  font: bold 24px "Courier New", Courier, monospace; color: rgba(31, 43, 23, 0.8);
+  padding: 0;
+}
+#act.active { background: rgba(255, 224, 102, 0.55); }
+
+/* Ending panel */
+#end {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  background: rgba(18, 26, 16, 0.42);
+  padding: 16px;
+}
+#end[hidden] { display: none; }
+#end .panel {
+  max-width: 420px; width: 100%;
+  background: rgba(26, 34, 24, 0.9); color: var(--bar-ink);
+  border-radius: 12px; padding: 22px 22px 18px; text-align: center;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+#end h2 { margin: 0 0 6px; font-size: 14px; letter-spacing: 0.2em; color: var(--gold); }
+#end p { margin: 10px 0; font-size: 16px; line-height: 1.45; }
+#end .stats { font-size: 14px; color: #d8d3bf; }
+#again {
+  margin-top: 8px; font: bold 15px "Courier New", Courier, monospace;
+  padding: 10px 18px; border-radius: 8px; border: 0; cursor: pointer;
+  background: var(--gold); color: #2a2a14;
+}
+@media (prefers-reduced-motion: reduce) {
+  #msg { transition: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="world" aria-hidden="true"></canvas>
+
+<div id="hud">
+  <div class="title">LITTLE VALE</div>
+  <div id="hud-motes">Motes 0/8</div>
+  <div id="hud-stories">Stories 0/3</div>
+  <div id="hud-fish">Fish 0</div>
+</div>
+
+<button id="mute" type="button" aria-pressed="false" aria-label="Sound off. Turn sound on">
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/>
+    <g class="off"><path d="M17 9l5 6M22 9l-5 6"/></g>
+    <g class="on"><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></g>
+  </svg>
+</button>
+
+<div id="msg" role="status" aria-live="polite"></div>
+
+<div id="touch">
+  <div id="dpad" aria-label="Move" role="group">
+    <span class="u">^</span><span class="d">v</span><span class="l">&lt;</span><span class="r">&gt;</span>
+  </div>
+  <button id="act" type="button" aria-label="Interact">A</button>
+</div>
+
+<div id="end" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="end-text">
+    <h2>LITTLE VALE</h2>
+    <p id="end-text">The vale is quiet again. Thank you for walking it.</p>
+    <p class="stats" id="end-stats"></p>
+    <button id="again" type="button">Play again</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+(function () {
+
+/* =====================================================================
+   PALETTE
+   ===================================================================== */
+const PAL = {
+  grass: '#69b44c', grassLight: '#8fce62', grassShadow: '#4c8a38', grassDeep: '#3a7030',
+  canopyHi: '#a5dd72', canopyMid: '#77bd4b', canopyShade: '#4d8c36', trunk: '#7a5230',
+  sand: '#c9ad7a', sandLight: '#dcc493', sandEdge: '#a68d5c',
+  pondShallow: '#a9e4cf', pondMid: '#6fc4b2',
+  riverShallow: '#9fd6e8', riverMid: '#63b4d6',
+  waterDeep: '#3f96a8', sparkle: '#ffffff',
+  stoneLight: '#c4c0b0', stoneMid: '#a09c8c', stoneShadow: '#767264',
+  plank: '#9a6b44', plankDark: '#6f4a2c',
+  mote: '#ffe066',
+  hat: '#f2d06b', shirt: '#2e6fd8', scarf: '#e0483e', trousers: '#3a4a6b', skin: '#f3cda4',
+  lily: '#5aa83e', lilyFlower: '#f6a5c0',
+  flowers: ['#fff6e0', '#f6a5c0', '#ffe066', '#c9a8ff', '#ff9a80'],
+};
+
+/* Colour helpers (used while building the static layer, and for a few
+   per-frame glows). */
+const rgbCache = new Map();
+function toRgb(hex) {
+  let v = rgbCache.get(hex);
+  if (!v) {
+    const n = parseInt(hex.slice(1), 16);
+    v = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    rgbCache.set(hex, v);
+  }
+  return v;
+}
+function mix(a, b, t) {
+  const A = toRgb(a), B = toRgb(b);
+  const r = Math.round(A[0] + (B[0] - A[0]) * t);
+  const g = Math.round(A[1] + (B[1] - A[1]) * t);
+  const bl = Math.round(A[2] + (B[2] - A[2]) * t);
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1);
+}
+
+/* Derived ramps */
+const GRASS_RAMP = [
+  mix(PAL.grass, PAL.grassShadow, 0.55),
+  mix(PAL.grass, PAL.grassShadow, 0.3),
+  mix(PAL.grass, PAL.grassShadow, 0.1),
+  mix(PAL.grass, PAL.grassLight, 0.12),
+  mix(PAL.grass, PAL.grassLight, 0.3),
+  mix(PAL.grass, PAL.grassLight, 0.48),
+];
+const SAND_RAMP = [mix(PAL.sand, PAL.sandEdge, 0.18), PAL.sand, mix(PAL.sand, PAL.sandLight, 0.35)];
+const CANOPY = {
+  hiBg: mix(PAL.canopyHi, PAL.canopyMid, 0.35), hiFg: mix(PAL.canopyHi, '#ffffff', 0.35),
+  midBg: PAL.canopyMid, midFg: PAL.canopyHi,
+  shBg: PAL.canopyShade, shFg: mix(PAL.canopyShade, '#1f4a1c', 0.45),
+};
+const SHADOW_TINT = PAL.grassDeep;
+
+/* =====================================================================
+   MAP  (50 x 28 tiles; each tile becomes a 2 x 2 block of grid cells)
+   .  grass   T tree   , path   W river   P pond   D dock/bridge wood
+   R  ruin    S statue B reeds  F flowers
+   ===================================================================== */
+const MAP = [
+  "TTT.TT..TTT.TTT.TT.........,..........TTT..TTTT.TT",
+  ".TTTT...........T..........,..........TT.T.TTTTT..",
+  "TT.T.TTTTTTTT...TT.........,..........T.T.T.T.T..T",
+  "TT.T..T.TTTT........T.....,,,,,,......T.T.TTTT....",
+  ".T..TTTT..T..............R,,,,R,,.......T...TTT.T.",
+  "T.TTT.TT.T...............,,,,,,,,.....TTT.T.TTTT.T",
+  "TT..T.........T..........,,,,,,,R.............T...",
+  "TTTTT...........F.FFF..T..R,,R,,.............TT.T.",
+  "...TT...........F.F........,,,,R...T....T......T..",
+  "TTTTT...........FFF.F......,...............S...TT.",
+  "TTTT........T..............,.....................T",
+  "..................T........,.........,,,,.........",
+  ".......S.................,,,,,,,,,,,,,,,,,,,,,,,,,",
+  "..........T...........,,,,,,,.,,,,..F.............",
+  "..BB..B.BBB.......,,,,,,....,,......FF......TTTTTT",
+  ".BBPPPPPPPBB...,,,,,.........,,.....FFTT....TTT..T",
+  "BBPPPPPPPPPB..,,,.............,...T..T.TT.TT..T..T",
+  ".PPPPPPPPPPP,,,...............,,....TT.......TTT..",
+  "BPPPPPPPPDDD,,........T........,,....TT..TT..TT..T",
+  "BBPPPPPPPPPB.........F..........,,BBBBT.T.....TTTT",
+  "..BPPPPPPPB....BBBB.F...BBB.....DDWWWWW...........",
+  "...BBBB.BB..BBWWWW.......WWWWWWWDDWWWWWWWWWWWWW.BB",
+  "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWDDWWWWWWWWWWWWWWWW",
+  "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW,,.....WWWWWWWWWWW",
+  "WWWWWWWWWWWWWWBBBBWWWWWWW..BBBBB,,.....BBB.....WWW",
+  "......BBBBBB.....B...BBB........,,...............B",
+  "T.TT....FF................T.....,,.......TTT.T.T.T",
+  "T.T.....F.......................,,........T.TTTTTT",
+];
+const MAP_W = 50, MAP_H = 28;
+const WORLD_COLS = MAP_W * 2, WORLD_ROWS = MAP_H * 2;  // 100 x 56 cells
+const CELL_W = 10, CELL_H = 15;                         // world units per cell
+const TILE_W = CELL_W * 2, TILE_H = CELL_H * 2;         // world units per tile
+const SOLID = new Set(['T', 'W', 'P', 'R', 'S']);
+
+/* Hand-placed details layered on the map */
+const PILLARS = [                 // ruin pillars (each sits on an R tile)
+  { tx: 25, ty: 4, h: 3 },
+  { tx: 30, ty: 4, h: 5 },         // tallest: carries an inscription
+  { tx: 32, ty: 6, h: 3 },
+  { tx: 26, ty: 7, h: 2 },
+  { tx: 29, ty: 7, h: 4 },
+];
+const FALLEN = [{ tx: 31, ty: 8 }];
+const STATUES = [{ tx: 7, ty: 12 }, { tx: 43, ty: 9 }];
+const RUIN_CLEARING = { x0: 25, x1: 32, y0: 3, y1: 8 };
+const DOCK = { row: 18, endTx: 9, bobberCell: 14 };   // bobber lands at world cell x=14
+const START = { tx: 24, ty: 12 };
+
+const MOTE_SPOTS = [
+  { tx: 13, ty: 20 },  // by the pond
+  { tx: 34, ty: 4 },   // past the ruins
+  { tx: 36, ty: 26 },  // far river bank
+  { tx: 20, ty: 26 },  // far river bank, west
+  { tx: 7, ty: 14 },   // west statue
+  { tx: 44, ty: 11 },  // east statue
+  { tx: 48, ty: 12 },  // east path end
+  { tx: 16, ty: 8 },   // flower meadow
+];
+
+const STORIES = {
+  wstat: 'The worn plinth reads: "We kept the vale with lights that needed no flame. Gather them, and we may rest."',
+  estat: 'Carved at its feet: "The river remembers every footstep that crossed it, and forgives most of them."',
+  pillar: 'Letters spiral up the pillar: "Here we sang the stones awake. Bring the light home to this circle."',
+};
+
+const FISH = [
+  'a speckled pond dace  ><>',
+  'a sleepy golden carp  ><(((*>',
+  'a tiny silver minnow  >>',
+  'a moss-backed perch  ><=>',
+  "a blushing rainbow trout  ><))'>",
+  'a whiskered mud loach  ~<:>',
+  'an old boot (it is just a boot)  [_|',
+  'a very offended frog  @..@',
+];
+
+/* =====================================================================
+   NOISE: seeded, frame-stable hashes so texture never re-rolls
+   ===================================================================== */
+function hash(x, y, s) {
+  let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  n ^= n >>> 16;
+  return (n >>> 0) / 4294967296;
+}
+function vnoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const pick = (arr, r) => arr[Math.min(arr.length - 1, Math.floor(r * arr.length))];
+
+/* Tile lookup, extended beyond the authored map so the meadow fills any
+   screen shape: river and paths continue off the edges, and sparse
+   procedural trees dot the extra meadow. */
+function tileAt(tx, ty) {
+  if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H) return MAP[ty][tx];
+  const t = MAP[clamp(ty, 0, MAP_H - 1)][clamp(tx, 0, MAP_W - 1)];
+  if (t === 'W' || t === ',') return t;
+  const far = Math.max(-1 - tx, tx - MAP_W, -1 - ty, ty - MAP_H);
+  if (MAP[clamp(ty - 1, 0, MAP_H - 1)][clamp(tx, 0, MAP_W - 1)] === 'W') return '.';  // no trees hanging over the river
+  return hash(tx, ty, 11) < (far > 1 ? 0.26 : 0.16) ? 'T' : '.';
+}
+function inWorldTile(tx, ty) { return tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H; }
+function isSolidTile(tx, ty) { return !inWorldTile(tx, ty) || SOLID.has(MAP[ty][tx]); }
+const GRASSY = new Set(['.', 'T', 'S', 'B', 'F']);
+
+/* =====================================================================
+   RENDERING: grid state
+   Arrays per cell: CHR (character), FG (colour), BG (cell tint), PRI
+   (stamp priority), DEP (depth row for objects, so the player can walk
+   behind trees and pillars). A static layer is drawn once per resize into
+   an offscreen canvas; only animated cells are repainted into it.
+   ===================================================================== */
+const canvas = document.getElementById('world');
+const ctx = canvas.getContext('2d', { alpha: false });
+let off = document.createElement('canvas');
+let offCtx = off.getContext('2d', { alpha: false });
+
+const view = { W: 0, H: 0, dpr: 1, s: 1, cw: 10, ch: 15, cols: 0, rows: 0, ox: 0, oy: 0, px0: 0, py0: 0, font: '' };
+let CHR = [], FG = [], BG = [], PRI = new Float32Array(0), DEP = new Int32Array(0), KIND = new Uint8Array(0);
+let anim = [];            // animated base cells: water, sparkles, canopy sway
+const K_GRASS = 1, K_PATH = 2, K_RIVER = 3, K_POND = 4, K_WOOD = 5;
+
+function computeLayout() {
+  const W = window.innerWidth, H = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const s = Math.min(W / (WORLD_COLS * CELL_W), H / (WORLD_ROWS * CELL_H));
+  const cw = CELL_W * s, ch = CELL_H * s;
+  const worldLeft = (W - WORLD_COLS * cw) / 2;
+  const vbias = H > W * 1.25 ? 0.3 : 0.5;     // tall phones: lift the world above the controls
+  const worldTop = (H - WORLD_ROWS * ch) * vbias;
+  const ox = Math.ceil(worldLeft / cw - 1e-6), oy = Math.ceil(worldTop / ch - 1e-6);
+  Object.assign(view, {
+    W, H, dpr, s, cw, ch, ox, oy,
+    px0: worldLeft - ox * cw, py0: worldTop - oy * ch,
+  });
+  view.cols = Math.ceil((W - view.px0) / cw) + 1;
+  view.rows = Math.ceil((H - view.py0) / ch) + 1;
+  const fs = Math.min(cw / 0.6, ch) * 0.95;
+  view.font = 'bold ' + fs.toFixed(2) + 'px "Courier New", Courier, monospace';
+  view.textDy = ch * 0.54;
+}
+
+/* Base-layer stamp: writes only if the new priority is higher. */
+function stamp(gx, gy, c, fg, pri, bg, dep) {
+  if (gx < 0 || gy < 0 || gx >= view.cols || gy >= view.rows) return -1;
+  const i = gy * view.cols + gx;
+  if (pri <= PRI[i]) return -1;
+  CHR[i] = c; FG[i] = fg; PRI[i] = pri;
+  if (bg) BG[i] = bg;
+  if (dep !== undefined) DEP[i] = dep;
+  return i;
+}
+/* World cell -> grid cell */
+const gX = (wx) => wx + view.ox;
+const gY = (wy) => wy + view.oy;
+
+function grassBg(wx, wy) {
+  const n = vnoise(wx / 15, wy / 9, 1) * 0.72 + vnoise(wx / 5, wy / 3.5, 2) * 0.28;
+  const idx = clamp(Math.floor(n * 6.4 - 0.2 + (hash(wx, wy, 3) - 0.5) * 0.9), 0, 5);
+  return idx;
+}
+
+function nearTree(tx, ty) {
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++)
+      if (tileAt(tx + dx, ty + dy) === 'T') return true;
+  return false;
+}
+
+/* Distance (in cells, capped) from a water cell to the nearest bank */
+function waterDepth(wx, wy, waterSet, cap) {
+  for (let r = 1; r <= cap; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const t = tileAt(Math.floor((wx + dx) / 2), Math.floor((wy + dy) / 2));
+        if (!waterSet.has(t)) return r - 1;
+      }
+    }
+  }
+  return cap;
+}
+const RIVER_SET = new Set(['W', 'D']);
+const POND_SET = new Set(['P', 'D']);
+
+function isDockTile(tx, ty) { return ty === DOCK.row && tx <= 11 && MAP[ty] && MAP[ty][tx] === 'D'; }
+
+/* ---------- Terrain pass (priority 0 to 1.5) ---------- */
+function buildTerrain() {
+  const { cols, rows, ox, oy } = view;
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const i = gy * cols + gx;
+      const wx = gx - ox, wy = gy - oy;
+      let tx = Math.floor(wx / 2), ty = Math.floor(wy / 2);
+      let t = tileAt(tx, ty);
+      const h1 = hash(wx, wy, 1), h2 = hash(wx, wy, 2), h3 = hash(wx, wy, 4);
+
+      // Soft, dithered edges between grass and path
+      if ((GRASSY.has(t) || t === ',') && h1 < 0.17) {
+        const d = Math.floor(h2 * 4);
+        const nx = wx + (d === 0 ? -1 : d === 1 ? 1 : 0), ny = wy + (d === 2 ? -1 : d === 3 ? 1 : 0);
+        const nt = tileAt(Math.floor(nx / 2), Math.floor(ny / 2));
+        if ((t === ',' && nt === '.') || (t === '.' && nt === ',')) t = nt;
+      }
+
+      if (t === 'W') {
+        const k = Math.min(2, waterDepth(wx, wy, RIVER_SET, 2));
+        BG[i] = [PAL.riverShallow, mix(PAL.riverShallow, PAL.riverMid, 0.5), mix(PAL.riverMid, PAL.waterDeep, 0.15)][k];
+        KIND[i] = K_RIVER; CHR[i] = ' '; FG[i] = PAL.riverMid; PRI[i] = 0.5;
+        anim.push({ type: 'river', i, wx, wy, k, h: h1, h2 });
+      } else if (t === 'P') {
+        const k = Math.min(3, waterDepth(wx, wy, POND_SET, 3));
+        BG[i] = [PAL.pondShallow, mix(PAL.pondShallow, PAL.pondMid, 0.45), PAL.pondMid, mix(PAL.pondMid, PAL.waterDeep, 0.28)][k];
+        KIND[i] = K_POND; CHR[i] = ' '; FG[i] = PAL.pondMid; PRI[i] = 0.5;
+        const nearDock = wy >= 34 && wy <= 39 && wx >= 11 && wx <= 18;
+        if (k >= 1 && !nearDock && h3 < 0.075) {
+          // lily pads (static)
+          CHR[i] = h2 < 0.18 ? '*' : 'o';
+          FG[i] = h2 < 0.18 ? PAL.lilyFlower : (h2 < 0.6 ? PAL.lily : PAL.canopyMid);
+          PRI[i] = 1;
+        } else {
+          anim.push({ type: 'pond', i, wx, wy, k, h: h1, h2 });
+        }
+      } else if (t === 'D') {
+        KIND[i] = K_WOOD; PRI[i] = 1;
+        if (isDockTile(tx, ty)) {
+          // Dock: reaches west into the pond, posts at the far end
+          const endPost = wx === DOCK.endTx * 2;
+          BG[i] = PAL.plank;
+          CHR[i] = endPost ? '|' : (wx % 2 === 0 ? '|' : '=');
+          FG[i] = PAL.plankDark;
+          if (!endPost && wx % 2 === 0) { CHR[i] = '='; }
+          if (endPost) BG[i] = mix(PAL.plank, PAL.plankDark, 0.4);
+        } else {
+          // Bridge: rails on the outer columns, planks across
+          const lx = wx - 64;   // bridge spans world cells 64..67
+          const rail = lx === 0 || lx === 3;
+          BG[i] = rail ? mix(PAL.plank, PAL.plankDark, 0.55) : PAL.plank;
+          CHR[i] = rail ? '|' : '=';
+          FG[i] = rail ? mix(PAL.plankDark, '#3d2817', 0.4) : PAL.plankDark;
+          const ab = tileAt(tx, Math.floor((wy - 1) / 2)), bl = tileAt(tx, Math.floor((wy + 1) / 2));
+          if (rail && (ab === ',' || bl === ',')) CHR[i] = '#';
+        }
+      } else if (t === ',' || t === 'R') {
+        KIND[i] = K_PATH; PRI[i] = 0;
+        BG[i] = SAND_RAMP[Math.floor(clamp(vnoise(wx / 4, wy / 3, 5) * 2.2 + (h2 - 0.5) * 0.9, 0, 2.99))];
+        // edge stones where the path meets grass
+        let edge = false;
+        for (let d = 0; d < 4 && !edge; d++) {
+          const nt = tileAt(Math.floor((wx + (d === 0 ? -1 : d === 1 ? 1 : 0)) / 2), Math.floor((wy + (d === 2 ? -1 : d === 3 ? 1 : 0)) / 2));
+          if (GRASSY.has(nt)) edge = true;
+        }
+        if (edge && h3 < 0.32) { CHR[i] = h1 < 0.5 ? '.' : 'o'; FG[i] = PAL.sandEdge; }
+        else if (h3 < 0.12) { CHR[i] = pick(['.', ':', ',', '.'], h2); FG[i] = h1 < 0.5 ? PAL.sandEdge : PAL.sandLight; }
+        else { CHR[i] = ' '; FG[i] = PAL.sand; }
+      } else {
+        // Grass (also under trees, statues, reeds and flowers)
+        KIND[i] = K_GRASS; PRI[i] = 0;
+        const gi = grassBg(wx, wy);
+        BG[i] = GRASS_RAMP[gi];
+        const dense = nearTree(tx, ty) ? 0.16 : 0;
+        if (h3 < 0.2 + dense) {
+          const r = hash(wx, wy, 6);
+          CHR[i] = r < 0.34 ? '.' : r < 0.6 ? ',' : r < 0.86 ? "'" : '"';
+          if (dense && r > 0.7) CHR[i] = '"';
+          FG[i] = gi >= 3 ? (h2 < 0.68 ? PAL.grassShadow : mix(PAL.grassLight, '#ffffff', 0.25))
+                          : (h2 < 0.6 ? PAL.grassLight : PAL.grassDeep);
+        } else { CHR[i] = ' '; FG[i] = PAL.grass; }
+
+        if (t === 'B') {
+          // Reeds: tall strokes, darker ground, the odd cattail
+          BG[i] = mix(BG[i], PAL.grassShadow, 0.35);
+          if (h1 < 0.8) {
+            const r = hash(wx, wy, 7);
+            if (r < 0.08) { CHR[i] = '!'; FG[i] = '#8a5a32'; }
+            else { CHR[i] = pick(['|', '|', '/', '\\', "'", 'i', '|'], r); FG[i] = pick([PAL.grassDeep, PAL.grassShadow, '#5f9e3c', PAL.grassLight], h2); }
+            PRI[i] = 1.5;
+          }
+        } else if (t === 'F' && h1 < 0.5) {
+          CHR[i] = pick(['*', 'o', '*', '.', '`', '*'], h2);
+          FG[i] = pick(PAL.flowers, hash(wx, wy, 8));
+          PRI[i] = 1.5;
+        }
+      }
+    }
+  }
+}
+
+/* ---------- Soft shadows on the ground ---------- */
+function shade(cx, cy, rx, ry, amt) {
+  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+      const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
+      const d = nx * nx + ny * ny + (hash(x, y, 31) - 0.5) * 0.3;
+      if (d > 1) continue;
+      const gx = gX(x), gy = gY(y);
+      if (gx < 0 || gy < 0 || gx >= view.cols || gy >= view.rows) continue;
+      const i = gy * view.cols + gx;
+      if (KIND[i] !== K_GRASS && KIND[i] !== K_PATH) continue;
+      BG[i] = mix(BG[i], SHADOW_TINT, amt * (d < 0.5 ? 1 : 0.65));
+      if (CHR[i] !== ' ' && PRI[i] < 1) FG[i] = mix(FG[i], SHADOW_TINT, 0.35);
+    }
+  }
+}
+
+/* ---------- Trees (priority 2 to 3; nearer trees draw on top) ---------- */
+const sway = [];
+function drawTree(tx, ty) {
+  const bx = tx * 2, by = ty * 2;
+  const cx = bx + 1 + (hash(tx, ty, 21) - 0.5) * 0.8;
+  const cy = by - 1.0 + (hash(tx, ty, 22) - 0.5) * 0.4;
+  const rx = 2.7 + hash(tx, ty, 23) * 0.7, ry = 2.0 + hash(tx, ty, 24) * 0.4;
+  const pri = 2 + (ty + 2) * 0.012, dep = by + 1;
+  for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry); y++) {
+    for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+      const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
+      const d = nx * nx + ny * ny;
+      if (d > 1 + (hash(x, y, 25) - 0.5) * 0.3) continue;
+      if (y > by) continue;
+      const r = hash(x, y, 27), r2 = hash(x, y, 28);
+      let light = -ny * 0.75 - nx * 0.35 + (hash(x, y, 26) - 0.5) * 0.4;
+      let band = light > 0.42 ? 2 : light > -0.3 ? 1 : 0;
+      if (ny > 0.55) band = 0;
+      let c, fg, bg;
+      if (band === 2) {
+        bg = CANOPY.hiBg; fg = CANOPY.hiFg;
+        c = (ny < -0.5 && d > 0.4) ? (r < 0.5 ? ':' : '.') : pick(['o', '%', '@', ':', '&'], r);
+      } else if (band === 1) {
+        bg = CANOPY.midBg; fg = CANOPY.midFg;
+        c = pick(['@', '%', '&', '#', 'o', '@'], r);
+      } else {
+        bg = CANOPY.shBg; fg = CANOPY.shFg;
+        c = pick(['#', '%', '@', '#', '&'], r);
+      }
+      if (nx < -0.78 && Math.abs(ny) < 0.55 && r2 < 0.6) { c = '('; }
+      else if (nx > 0.78 && Math.abs(ny) < 0.55 && r2 < 0.6) { c = ')'; }
+      const i = stamp(gX(x), gY(y), c, fg, pri, bg, dep);
+      if (i >= 0 && c !== '(' && c !== ')' && r2 > 0.72) {
+        const alts = band === 2 ? [':', '.', 'o', '%'] : ['@', '%', '&', 'o', '#'];
+        let alt = pick(alts, hash(x, y, 29));
+        if (alt === c) alt = alts[(alts.indexOf(c) + 1) % alts.length];
+        sway.push({ type: 'sway', i, base: c, alt, pri, h: r2 * 10 });
+      }
+    }
+  }
+  // trunk
+  const tb = mix(PAL.grassShadow, PAL.grassDeep, 0.5);
+  stamp(gX(bx), gY(by + 1), '|', PAL.trunk, pri + 0.005, tb, dep);
+  stamp(gX(bx + 1), gY(by + 1), '|', mix(PAL.trunk, '#3d2817', 0.3), pri + 0.005, tb, dep);
+  if (hash(tx, ty, 30) < 0.5) stamp(gX(bx + (hash(tx, ty, 32) < 0.5 ? 0 : 1)), gY(by), 'Y', PAL.trunk, pri + 0.005, CANOPY.shBg, dep);
+}
+
+/* ---------- Stone: pillars, fallen blocks, statues ---------- */
+const STONE = {
+  litBg: PAL.stoneLight, litFg: mix(PAL.stoneShadow, '#4a473e', 0.2),
+  midBg: PAL.stoneMid, midFg: mix(PAL.stoneShadow, '#3c3a33', 0.35),
+};
+function drawPillar(p) {
+  const bx = p.tx * 2, base = p.ty * 2 + 1;
+  const pri = 2 + (p.ty + 2) * 0.012 + 0.006, dep = base;
+  for (let k = 0; k < p.h; k++) {
+    const y = base - k;
+    for (let col = 0; col < 2; col++) {
+      const lit = col === 0;
+      const r = hash(bx + col, y, 41);
+      let c, bg = lit ? STONE.litBg : STONE.midBg, fg = lit ? STONE.litFg : STONE.midFg;
+      if (k === 0) c = lit ? '[' : ']';
+      else if (k === p.h - 1) {
+        // broken top: one cell jagged against the sand
+        const brokenLeft = hash(bx, base, 42) < 0.5;
+        if ((lit && brokenLeft) || (!lit && !brokenLeft)) { c = lit ? '/' : '\\'; bg = null; fg = PAL.stoneShadow; }
+        else c = pick(['_', '#', '|'], r);
+      } else c = r < 0.22 ? (lit ? '/' : '\\') : (r < 0.35 ? '#' : '|');
+      stamp(gX(bx + col), gY(y), c, fg, pri, bg || undefined, dep);
+    }
+  }
+  shade(bx + 2.4, base + 0.7, 1.6, 0.9, 0.3);
+}
+function drawFallen(f) {
+  const bx = f.tx * 2, by = f.ty * 2;
+  const pri = 2 + (f.ty + 2) * 0.012 + 0.006, dep = by + 1;
+  stamp(gX(bx), gY(by), '_', PAL.stoneShadow, pri, undefined, dep);
+  stamp(gX(bx + 1), gY(by), '_', PAL.stoneShadow, pri, undefined, dep);
+  stamp(gX(bx), gY(by + 1), '[', STONE.litFg, pri, STONE.litBg, dep);
+  stamp(gX(bx + 1), gY(by + 1), '#', STONE.midFg, pri, STONE.midBg, dep);
+  stamp(gX(bx + 2), gY(by + 1), ']', STONE.midFg, pri - 0.001, STONE.midBg, dep);
+}
+function drawStatue(s) {
+  const bx = s.tx * 2, by = s.ty * 2;
+  const pri = 2 + (s.ty + 2) * 0.012 + 0.006, dep = by + 1;
+  const rows = [['(', ')'], ['/', '\\'], ['#', '#']];
+  for (let k = 0; k < 3; k++) {
+    for (let col = 0; col < 2; col++) {
+      const lit = col === 0;
+      stamp(gX(bx + col), gY(by - 1 + k), rows[k][col], lit ? STONE.litFg : STONE.midFg, pri,
+        k === 2 ? (lit ? PAL.stoneMid : PAL.stoneShadow) : (lit ? STONE.litBg : STONE.midBg), dep);
+    }
+  }
+}
+
+/* Build the whole static grid and paint it to the offscreen canvas */
+function buildWorld() {
+  computeLayout();
+  const n = view.cols * view.rows;
+  CHR = new Array(n); FG = new Array(n); BG = new Array(n);
+  PRI = new Float32Array(n); DEP = new Int32Array(n).fill(-99999); KIND = new Uint8Array(n);
+  anim = []; sway.length = 0;
+  buildTerrain();
+
+  // collect trees on and around the visible area
+  const trees = [];
+  const tx0 = Math.floor(-view.ox / 2) - 3, tx1 = Math.ceil((view.cols - view.ox) / 2) + 3;
+  const ty0 = Math.floor(-view.oy / 2) - 3, ty1 = Math.ceil((view.rows - view.oy) / 2) + 3;
+  for (let ty = ty0; ty <= ty1; ty++)
+    for (let tx = tx0; tx <= tx1; tx++)
+      if (tileAt(tx, ty) === 'T') trees.push([tx, ty]);
+  for (const [tx, ty] of trees) shade(tx * 2 + 1.9, ty * 2 + 1.9, 3.1, 1.25, 0.38);
+  for (const s of STATUES) shade(s.tx * 2 + 2.3, s.ty * 2 + 1.8, 1.6, 0.8, 0.3);
+  for (const [tx, ty] of trees) drawTree(tx, ty);
+  for (const p of PILLARS) drawPillar(p);
+  for (const f of FALLEN) drawFallen(f);
+  for (const s of STATUES) drawStatue(s);
+  // keep only sway cells still owned by their tree
+  // water cells hidden under an overhanging canopy stop animating
+  anim = anim.filter((e) => PRI[e.i] === 0.5);
+  for (const e of sway) if (CHR[e.i] === e.base && PRI[e.i] === e.pri) anim.push(e);
+  for (const e of anim) { e.cur = CHR[e.i]; e.curFg = FG[e.i]; }
+
+  // offscreen canvas at device resolution
+  off.width = Math.round(view.W * view.dpr); off.height = Math.round(view.H * view.dpr);
+  canvas.width = off.width; canvas.height = off.height;
+  offCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  offCtx.font = view.font; offCtx.textAlign = 'center'; offCtx.textBaseline = 'middle';
+  offCtx.fillStyle = PAL.grass; offCtx.fillRect(0, 0, view.W, view.H);
+  tickAnim(true);
+  for (let i = 0; i < n; i++) paintCell(offCtx, i, CHR[i], FG[i]);
+  needsRedraw = true;
+}
+
+function cellXY(i) {
+  const gx = i % view.cols, gy = (i - gx) / view.cols;
+  return [view.px0 + gx * view.cw, view.py0 + gy * view.ch];
+}
+function paintCell(c2d, i, c, fg) {
+  const [x, y] = cellXY(i);
+  c2d.fillStyle = BG[i];
+  c2d.fillRect(x, y, view.cw + 0.6, view.ch + 0.6);
+  if (c !== ' ') {
+    c2d.fillStyle = fg;
+    c2d.fillText(c, x + view.cw / 2, y + view.textDy);
+  }
+}
+
+/* ---------- Ambient animation of base cells (water, sparkles, sway) ---------- */
+let animT = 0, lastAnimTick = -1;
+function animCell(e, t) {
+  if (e.type === 'river') {
+    const ph = e.wx * 0.42 - t * 1.05 + Math.sin(e.wy * 0.9 + e.h * 6) * 1.4;
+    const v = Math.sin(ph) + 0.35 * Math.sin(e.wx * 0.17 + t * 0.55 + e.wy);
+    let c = ' ';
+    if (v > 1.0) c = '~';
+    else if (v > 0.62) c = e.h2 < 0.55 ? '~' : '-';
+    else if (v < -1.1) c = '=';
+    else if (v < -0.8 && e.h2 < 0.35) c = '-';
+    let fg = e.k === 0 ? PAL.riverMid : e.k === 1 ? mix(PAL.riverMid, PAL.waterDeep, 0.45) : PAL.riverShallow;
+    if (hash(e.wx, e.wy, Math.floor(t * 2.2 + e.h * 3)) > 0.993) { c = e.h2 < 0.5 ? "'" : '.'; fg = PAL.sparkle; }
+    return [c, fg];
+  }
+  if (e.type === 'pond') {
+    const v = Math.sin(e.wx * 0.32 - t * 0.42 + e.h * 5) * Math.sin(e.wy * 0.75 + t * 0.28 + e.h2 * 2);
+    let c = v > 0.62 ? '~' : (v < -0.72 && e.h2 < 0.5) ? '-' : ' ';
+    let fg = e.k <= 1 ? PAL.pondMid : e.k === 2 ? mix(PAL.pondShallow, '#ffffff', 0.2) : PAL.pondShallow;
+    if (hash(e.wx, e.wy, Math.floor(t * 1.6 + e.h * 5)) > 0.986) { c = e.h2 < 0.5 ? "'" : '.'; fg = PAL.sparkle; }
+    return [c, fg];
+  }
+  // sway: a canopy cell occasionally swaps its character
+  const on = hash(e.i, Math.floor(t * 0.7 + e.h), 33) < 0.07;
+  return [on ? e.alt : e.base, FG[e.i]];
+}
+function tickAnim(silent) {
+  const t = animT;
+  for (const e of anim) {
+    const [c, fg] = animCell(e, t);
+    if (c !== e.cur || fg !== e.curFg) {
+      e.cur = c; e.curFg = fg; CHR[e.i] = c; FG[e.i] = fg;
+      if (!silent) paintCell(offCtx, e.i, c, fg);
+    }
+  }
+}
+
+/* ---------- Effects layer (player, motes, fishing, particles) ---------- */
+const fx = new Map();   // cell index -> { c, fg, pri }
+function stampFx(gx, gy, c, fg, pri, depthRow) {
+  if (gx < 0 || gy < 0 || gx >= view.cols || gy >= view.rows) return;
+  const i = gy * view.cols + gx;
+  if (depthRow !== undefined && DEP[i] > depthRow) return;   // behind a tree or stone
+  const prev = fx.get(i);
+  if (pri <= PRI[i] && depthRow === undefined) return;
+  if (prev && prev.pri >= pri) return;
+  fx.set(i, { c, fg, pri });
+}
+/* World units -> grid cell */
+const wuToGX = (x) => Math.floor(x / CELL_W) + view.ox;
+const wuToGY = (y) => Math.floor(y / CELL_H) + view.oy;
+
+function render() {
+  fx.clear();
+  drawMotes();
+  drawFireflies();
+  drawFishing();
+  drawParticles();
+  drawPlayer();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(off, 0, 0);
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.font = view.font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [i, f] of fx) paintCell(ctx, i, f.c, f.fg);
+  needsRedraw = false;
+}
+
+/* =====================================================================
+   GAME STATE
+   ===================================================================== */
+const state = {
+  motes: [], stories: {}, storyCount: 0, fish: 0,
+  startTime: 0, ended: false, completeAt: 0, lastReadAt: 0,
+};
+const player = { x: 0, y: 0, face: 'down', moving: false, walkT: 0 };
+const particles = [];
+const fireflies = [];
+let needsRedraw = true;
+
+function resetGame() {
+  state.motes = MOTE_SPOTS.map((m, k) => ({
+    x: (m.tx * 2 + 1) * CELL_W, y: (m.ty * 2 + 0.5) * CELL_H, got: false, ph: k * 0.9,
+  }));
+  state.stories = {}; state.storyCount = 0; state.fish = 0;
+  state.startTime = performance.now(); state.ended = false; state.completeAt = 0; state.lastReadAt = 0;
+  player.x = START.tx * TILE_W + TILE_W / 2;
+  player.y = START.ty * TILE_H + 24;
+  player.face = 'down'; player.moving = false; player.walkT = 0;
+  particles.length = 0;
+  fishing.state = 'idle';
+  fireflies.length = 0;
+  for (let k = 0; k < 9; k++) {
+    fireflies.push({
+      x0: 60 + hash(k, 1, 51) * 880, y0: 40 + hash(k, 2, 51) * 600,
+      ax: 30 + hash(k, 3, 51) * 50, ay: 20 + hash(k, 4, 51) * 30, ph: hash(k, 5, 51) * 6.28,
+    });
+  }
+  document.getElementById('end').hidden = true;
+  updateHud();
+  msg.until = 0; promptText = '';
+  showMessage('A soft, sunlit morning in the vale.', 3.5);
+  needsRedraw = true;
+  wake();
+}
+
+/* =====================================================================
+   PLAYER: movement, collision, drawing
+   ===================================================================== */
+const SPEED = 90;   // world units per second (1 unit = 1px at scale 1)
+const FEET = [[-6, -2], [6, -2], [-6, -10], [6, -10]];
+function blockedAt(x, y) {
+  for (const [dx, dy] of FEET) {
+    const px = x + dx, py = y + dy;
+    if (px < 2 || py < 2 || px > MAP_W * TILE_W - 2 || py > MAP_H * TILE_H - 1) return true;
+    if (isSolidTile(Math.floor(px / TILE_W), Math.floor(py / TILE_H))) return true;
+  }
+  return false;
+}
+function updatePlayer(dt) {
+  let ix = input.x(), iy = input.y();
+  const len = Math.hypot(ix, iy);
+  player.moving = len > 0.01;
+  if (!player.moving) return;
+  ix /= len; iy /= len;
+  if (Math.abs(ix) > Math.abs(iy)) player.face = ix < 0 ? 'left' : 'right';
+  else player.face = iy < 0 ? 'up' : 'down';
+  const step = SPEED * dt * (debug.speed || 1);
+  const nx = player.x + ix * step, ny = player.y + iy * step;
+  // slide along obstacles: try each axis independently
+  if (!blockedAt(nx, player.y)) player.x = nx;
+  if (!blockedAt(player.x, ny)) player.y = ny;
+  player.walkT += dt;
+  if (fishing.state !== 'idle') cancelFishing('You wind in your line.');
+}
+function drawPlayer() {
+  const c0 = Math.round(player.x / CELL_W) - 1;
+  const fr = Math.floor((player.y - 0.01) / CELL_H);
+  const gx = c0 + view.ox, gy = fr + view.oy;
+  const P = 4.5;
+  const f = player.face;
+  const frame = player.moving ? Math.floor(player.walkT * 7) % 2 : -1;
+  // row 0: straw hat with brim
+  const hat = f === 'left' ? ['<', '\\'] : f === 'right' ? ['/', '>'] : ['/', '\\'];
+  stampFx(gx, gy - 2, hat[0], PAL.hat, P, fr);
+  stampFx(gx + 1, gy - 2, hat[1], PAL.hat, P, fr);
+  // row 1: face / shirt / scarf
+  let r1;
+  if (f === 'down') r1 = [['%', PAL.scarf], ['#', PAL.shirt]];
+  else if (f === 'up') r1 = [['[', PAL.scarf], [']', PAL.scarf]];
+  else if (f === 'left') r1 = [['o', PAL.skin], ['#', PAL.shirt]];
+  else r1 = [['#', PAL.shirt], ['o', PAL.skin]];
+  stampFx(gx, gy - 1, r1[0][0], r1[0][1], P, fr);
+  stampFx(gx + 1, gy - 1, r1[1][0], r1[1][1], P, fr);
+  // row 2: legs, two walking frames
+  const legs = frame === 0 ? ['/', '|'] : frame === 1 ? ['|', '\\'] : ['|', '|'];
+  stampFx(gx, gy, legs[0], PAL.trousers, P, fr);
+  stampFx(gx + 1, gy, legs[1], PAL.trousers, P, fr);
+}
+
+/* =====================================================================
+   MOTES, FIREFLIES, PARTICLES
+   ===================================================================== */
+function drawMotes() {
+  const t = animT;
+  for (const m of state.motes) {
+    if (m.got) continue;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3 + m.ph);
+    const gx = wuToGX(m.x), gy = wuToGY(m.y) + (Math.sin(t * 1.6 + m.ph) > 0.6 ? -1 : 0);
+    stampFx(gx, gy, pulse > 0.45 ? '*' : '+', mix('#f5c33b', PAL.mote, pulse), 4);
+    if (pulse > 0.7) {
+      const glow = mix(PAL.grassLight, PAL.mote, 0.6);
+      stampFx(gx - 1, gy, '.', glow, 3.9);
+      stampFx(gx + 1, gy, '.', glow, 3.9);
+    }
+  }
+}
+function drawFireflies() {
+  if (reducedMotion) return;
+  const t = animT;
+  for (const f of fireflies) {
+    const x = f.x0 + Math.sin(t * 0.21 + f.ph) * f.ax, y = f.y0 + Math.sin(t * 0.17 + f.ph * 1.7) * f.ay;
+    const p = 0.5 + 0.5 * Math.sin(t * 1.3 + f.ph * 3);
+    if (p < 0.25) continue;
+    const gx = wuToGX(x), gy = wuToGY(y);
+    if (gx < 0 || gy < 0 || gx >= view.cols || gy >= view.rows) continue;
+    const i = gy * view.cols + gx;
+    stampFx(gx, gy, p > 0.7 ? "'" : '.', mix(BG[i], PAL.mote, 0.35 + p * 0.6), 3.8);
+  }
+}
+function burst(x, y, chars, colors, n, speed) {
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2 + Math.random() * 0.5;
+    const v = speed * (0.6 + Math.random() * 0.6);
+    particles.push({
+      x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 1.2, life: 0.75, max: 0.75,
+      c: chars[k % chars.length], col: colors[k % colors.length],
+    });
+  }
+}
+function updateParticles(dt) {
+  for (let k = particles.length - 1; k >= 0; k--) {
+    const p = particles[k];
+    p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92;
+    if (p.life <= 0) particles.splice(k, 1);
+  }
+}
+function drawParticles() {
+  for (const p of particles) stampFx(wuToGX(p.x), wuToGY(p.y), p.life < p.max * 0.35 ? '.' : p.c, p.col, 5);
+}
+function checkMotes() {
+  for (const m of state.motes) {
+    if (m.got) continue;
+    if (Math.abs(m.x - player.x) < 14 && m.y > player.y - 50 && m.y < player.y + 8) {
+      m.got = true;
+      burst(m.x, m.y, ['*', '+', "'", '*'], [PAL.mote, '#ffffff', '#fff2b0'], 12, 70);
+      sfx.chirp();
+      const left = state.motes.filter((q) => !q.got).length;
+      updateHud();
+      showMessage(left ? 'A golden mote. ' + left + ' still drifting in the vale.' : 'The last mote! The vale glows a little warmer.', 2.6);
+      checkComplete();
+    }
+  }
+}
+
+/* =====================================================================
+   INTERACTIONS: inscriptions, dock, ending
+   ===================================================================== */
+const INTERACTABLES = [
+  { id: 'wstat', kind: 'read', tx: 7, ty: 12 },
+  { id: 'estat', kind: 'read', tx: 43, ty: 9 },
+  { id: 'pillar', kind: 'read', tx: 30, ty: 4 },
+  { id: 'dock', kind: 'fish', tx: DOCK.endTx, ty: DOCK.row },
+];
+function playerTile() { return [player.x / TILE_W, (player.y - 6) / TILE_H]; }
+function nearestInteractable() {
+  const [ptx, pty] = playerTile();
+  let best = null, bestD = 1.5;
+  for (const it of INTERACTABLES) {
+    const d = Math.hypot(ptx - (it.tx + 0.5), pty - (it.ty + 0.5));
+    if (d > bestD) continue;
+    if (it.kind === 'fish') {
+      const ftx = Math.floor(player.x / TILE_W), fty = Math.floor((player.y - 6) / TILE_H);
+      if (!isDockTile(ftx, fty) || d > 1.1) continue;
+    }
+    best = it; bestD = d;
+  }
+  return best;
+}
+function interact() {
+  if (state.ended) return;
+  sfx.unlock();
+  if (fishing.state !== 'idle') { fishingPress(); return; }
+  const it = nearestInteractable();
+  if (!it) return;
+  if (it.kind === 'read') {
+    showMessage(STORIES[it.id], 7, it);
+    if (!state.stories[it.id]) {
+      state.stories[it.id] = true; state.storyCount++;
+      state.lastReadAt = performance.now();
+      updateHud(); checkComplete();
+    }
+  } else if (it.kind === 'fish') {
+    startFishing();
+  }
+  wake();
+}
+function allDone() { return state.storyCount === 3 && state.motes.every((m) => m.got); }
+function checkComplete() {
+  if (allDone() && !state.completeAt) {
+    state.completeAt = performance.now();
+    setTimeout(() => { if (!state.ended && allDone()) showMessage('The motes hum together. Walk back to the ruin clearing.', 5); }, 2800);
+  }
+}
+function inClearing() {
+  const tx = Math.floor(player.x / TILE_W), ty = Math.floor((player.y - 6) / TILE_H);
+  const c = RUIN_CLEARING;
+  return tx >= c.x0 && tx <= c.x1 && ty >= c.y0 && ty <= c.y1 && MAP[ty][tx] === ',';
+}
+function checkEnding(now) {
+  if (state.ended || !allDone() || !inClearing()) return;
+  if (now - state.lastReadAt < 3000) return;    // let the last inscription be read first
+  state.ended = true;
+  cancelFishing();
+  const secs = Math.round((now - state.startTime) / 1000);
+  const m = Math.floor(secs / 60), s = secs % 60;
+  document.getElementById('end-stats').textContent =
+    'Time taken: ' + (m ? m + 'm ' : '') + s + 's  ·  Fish caught: ' + state.fish;
+  document.getElementById('end').hidden = false;
+  msg.until = 0; promptText = ''; updateMsgBar();
+  input.clear();
+  burst(player.x, player.y - 20, ['*', '+', "'"], [PAL.mote, '#ffffff'], 18, 110);
+  setTimeout(() => document.getElementById('again').focus(), 50);
+}
+
+/* =====================================================================
+   FISHING  (idle -> waiting -> bite -> result)
+   ===================================================================== */
+const fishing = { state: 'idle', t: 0, biteAt: 0, row: 0 };
+function startFishing() {
+  fishing.state = 'waiting';
+  fishing.t = 0;
+  fishing.biteAt = 1 + Math.random() * 2;          // 1 to 3 seconds
+  fishing.row = Math.floor((player.y - 0.01) / CELL_H) - 1;
+  player.face = 'left';
+  sfx.splash(0.5);
+  showMessage('You cast your line. Wait for the bobber to dip...', 2);
+  wake();
+}
+function fishingPress() {
+  if (fishing.state === 'waiting') {
+    fishing.state = 'idle';
+    showMessage('Too early. The bobber was still bobbing.', 2.5);
+  } else if (fishing.state === 'bite') {
+    fishing.state = 'idle';
+    state.fish++;
+    updateHud();
+    const name = FISH[Math.floor(Math.random() * FISH.length)];
+    showMessage('You caught ' + name + '! You let it slip back into the pond.', 4);
+    burst((DOCK.bobberCell + 0.5) * CELL_W, (fishing.row + 0.5) * CELL_H, ['~', 'o', "'", '.'], ['#ffffff', PAL.pondShallow, PAL.riverShallow], 10, 55);
+    sfx.splash(1);
+  }
+}
+function cancelFishing(text) {
+  if (fishing.state === 'idle') return;
+  fishing.state = 'idle';
+  if (text) showMessage(text, 1.8);
+}
+function updateFishing(dt) {
+  if (fishing.state === 'idle') return;
+  fishing.t += dt;
+  if (fishing.state === 'waiting' && fishing.t >= fishing.biteAt) {
+    fishing.state = 'bite'; fishing.t = 0;
+    sfx.splash(0.35);
+  } else if (fishing.state === 'bite' && fishing.t >= 1.0) {
+    fishing.state = 'idle';
+    showMessage('Something nibbled... and got away.', 2.5);
+  }
+}
+function drawFishing() {
+  if (fishing.state === 'idle') return;
+  const bx = DOCK.bobberCell, by = fishing.row;
+  const c0 = Math.round(player.x / CELL_W) - 1;
+  for (let x = bx + 1; x < c0; x++) stampFx(gX(x), gY(by), x === bx + 1 ? '.' : '-', '#f4f1e6', 4.2);
+  if (fishing.state === 'waiting') {
+    const bob = Math.sin(fishing.t * 5) > 0;
+    stampFx(gX(bx), gY(by), bob ? 'o' : 'O', PAL.scarf, 4.2);
+  } else {
+    stampFx(gX(bx), gY(by), '.', PAL.scarf, 4.2);
+    stampFx(gX(bx - 1), gY(by), '(', '#ffffff', 4.2);
+    stampFx(gX(bx + 1), gY(by), ')', '#ffffff', 4.2);
+    stampFx(gX(bx), gY(by - 1), '!', '#ffffff', 4.3);
+    stampFx(gX(bx), gY(by - 2), '!', PAL.scarf, 4.3);
+  }
+}
+
+/* =====================================================================
+   HUD AND MESSAGE BAR
+   ===================================================================== */
+const hudMotes = document.getElementById('hud-motes');
+const hudStories = document.getElementById('hud-stories');
+const hudFish = document.getElementById('hud-fish');
+const msgEl = document.getElementById('msg');
+function updateHud() {
+  hudMotes.textContent = 'Motes ' + state.motes.filter((m) => m.got).length + '/8';
+  hudStories.textContent = 'Stories ' + state.storyCount + '/3';
+  hudFish.textContent = 'Fish ' + state.fish;
+}
+const msg = { text: '', until: 0, src: null };
+let promptText = '', shownText = null, msgTimer = 0;
+function showMessage(text, secs, src) {
+  msg.text = text; msg.until = performance.now() + secs * 1000; msg.src = src || null;
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(updateMsgBar, secs * 1000 + 20);
+  updateMsgBar();
+}
+function updateMsgBar() {
+  const now = performance.now();
+  const text = now < msg.until ? msg.text : promptText;
+  if (text === shownText) return;
+  shownText = text;
+  if (text) { msgEl.textContent = text; msgEl.classList.add('show'); }
+  else msgEl.classList.remove('show');     // keep old text while it fades
+}
+function updatePrompt() {
+  const key = isTouch ? 'A' : 'E';
+  let p = '';
+  if (state.ended) p = '';
+  else if (fishing.state === 'waiting') p = 'Waiting for a bite...';
+  else if (fishing.state === 'bite') p = 'Now! ' + key + ': reel in';
+  else {
+    const it = nearestInteractable();
+    if (it) p = key + (it.kind === 'fish' ? ': fish' : ': read');
+  }
+  // an inscription fades once you walk away from it
+  if (msg.src && performance.now() < msg.until) {
+    const [ptx, pty] = playerTile();
+    if (Math.hypot(ptx - msg.src.tx - 0.5, pty - msg.src.ty - 0.5) > 3) msg.until = 0;
+  }
+  // the bite cue overrides any lingering message
+  if (fishing.state === 'bite' && performance.now() < msg.until) msg.until = 0;
+  if (p !== promptText) { promptText = p; }
+  updateMsgBar();
+}
+
+/* =====================================================================
+   SOUND (tiny WebAudio blips; muted by default)
+   ===================================================================== */
+const sfx = (() => {
+  let actx = null, muted = true;
+  function unlock() {
+    if (muted) return;
+    try {
+      if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) actx = new AC(); }
+      if (actx && actx.state === 'suspended') actx.resume();
+    } catch (e) { actx = null; }
+  }
+  function chirp() {
+    if (muted || !actx) return;
+    try {
+      const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(880, t);
+      o.frequency.exponentialRampToValueAtTime(1560, t + 0.09);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.05, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t); o.stop(t + 0.22);
+    } catch (e) { /* sound is optional */ }
+  }
+  function splash(vol) {
+    if (muted || !actx) return;
+    try {
+      const t = actx.currentTime, len = Math.floor(actx.sampleRate * 0.3);
+      const buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+      for (let k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * (1 - k / len);
+      const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+      src.buffer = buf; f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.8;
+      g.gain.setValueAtTime(0.07 * vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      src.connect(f); f.connect(g); g.connect(actx.destination);
+      src.start(t);
+    } catch (e) { /* sound is optional */ }
+  }
+  const btn = document.getElementById('mute');
+  btn.addEventListener('click', () => {
+    muted = !muted;
+    btn.setAttribute('aria-pressed', String(!muted));
+    btn.setAttribute('aria-label', muted ? 'Sound off. Turn sound on' : 'Sound on. Turn sound off');
+    unlock();
+    if (!muted) chirp();
+    btn.blur();
+  });
+  return { unlock, chirp, splash };
+})();
+
+/* =====================================================================
+   INPUT: keyboard, touch D-pad, interact button
+   ===================================================================== */
+const keys = new Set();
+const pad = { x: 0, y: 0 };
+const debug = { x: 0, y: 0, speed: 1 };
+const input = {
+  x() {
+    if (state.ended) return 0;
+    let v = pad.x + debug.x;
+    if (keys.has('left')) v -= 1;
+    if (keys.has('right')) v += 1;
+    return clamp(v, -1, 1);
+  },
+  y() {
+    if (state.ended) return 0;
+    let v = pad.y + debug.y;
+    if (keys.has('up')) v -= 1;
+    if (keys.has('down')) v += 1;
+    return clamp(v, -1, 1);
+  },
+  active() { return keys.size > 0 || pad.x !== 0 || pad.y !== 0 || debug.x !== 0 || debug.y !== 0; },
+  clear() { keys.clear(); pad.x = pad.y = 0; },
+};
+const KEYMAP = {
+  ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+};
+window.addEventListener('keydown', (e) => {
+  const k = KEYMAP[e.code];
+  if (k || e.code === 'Space') e.preventDefault();
+  if (state.ended) {
+    if ((e.code === 'Enter' || e.code === 'Space') && !e.repeat) { e.preventDefault(); resetGame(); }
+    return;
+  }
+  if (k) { keys.add(k); wake(); }
+  else if ((e.code === 'KeyE' || e.code === 'Space') && !e.repeat) interact();
+});
+window.addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) keys.delete(k); });
+window.addEventListener('blur', () => input.clear());
+
+const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
+if (isTouch) document.body.classList.add('touch');
+window.addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
+
+const dpad = document.getElementById('dpad');
+let padPointer = null;
+function padFrom(e) {
+  const r = dpad.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const len = Math.hypot(dx, dy);
+  if (len < 12) { pad.x = pad.y = 0; return; }
+  const ux = dx / len, uy = dy / len;              // 8-way snap
+  pad.x = Math.abs(ux) > 0.38 ? Math.sign(ux) : 0;
+  pad.y = Math.abs(uy) > 0.38 ? Math.sign(uy) : 0;
+  wake();
+}
+dpad.addEventListener('pointerdown', (e) => {
+  e.preventDefault(); padPointer = e.pointerId;
+  try { dpad.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  dpad.classList.add('active'); padFrom(e);
+});
+dpad.addEventListener('pointermove', (e) => { if (e.pointerId === padPointer) { e.preventDefault(); padFrom(e); } });
+const padEnd = (e) => {
+  if (e.pointerId !== padPointer) return;
+  padPointer = null; pad.x = pad.y = 0; dpad.classList.remove('active');
+};
+dpad.addEventListener('pointerup', padEnd);
+dpad.addEventListener('pointercancel', padEnd);
+dpad.addEventListener('lostpointercapture', padEnd);
+
+const actBtn = document.getElementById('act');
+actBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); actBtn.classList.add('active'); interact(); });
+const actUp = () => actBtn.classList.remove('active');
+actBtn.addEventListener('pointerup', actUp);
+actBtn.addEventListener('pointercancel', actUp);
+actBtn.addEventListener('click', (e) => e.preventDefault());   // no click-through
+for (const el of [dpad, actBtn]) {
+  el.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.getElementById('again').addEventListener('click', () => resetGame());
+
+/* Resize: debounced rebuild of the grid */
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { buildWorld(); wake(); }, 140);
+});
+
+/* =====================================================================
+   MAIN LOOP
+   ===================================================================== */
+const reducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let raf = 0, last = 0;
+function frame(now) {
+  const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016);
+  last = now;
+  if (!reducedMotion) {
+    animT += dt;
+    if (animT - lastAnimTick >= 0.125) { lastAnimTick = animT; tickAnim(false); }
+  }
+  if (!state.ended) {
+    updatePlayer(dt);
+    checkMotes();
+    updateFishing(dt);
+    checkEnding(now);
+    updatePrompt();
+  }
+  updateParticles(dt);
+  render();
+  // With reduced motion the loop only runs while something is changing.
+  if (!reducedMotion || input.active() || fishing.state !== 'idle' || particles.length || needsRedraw) {
+    raf = requestAnimationFrame(frame);
+  } else { raf = 0; last = 0; }
+}
+function wake() { needsRedraw = true; if (!raf) raf = requestAnimationFrame(frame); }
+
+// Small read-only-ish hook used by automated tests.
+window.__littleVale = { state, player, fishing, debug, view, interact, reset: () => resetGame(), MAP };
+
+buildWorld();
+resetGame();
+wake();
+
+})();
+</script>
+</body>
+</html>

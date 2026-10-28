@@ -47,6 +47,7 @@ The ones that started it, plus the playful ones.
 | Piece | What it is |
 | --- | --- |
 | [ASCII Koi Pond](ascii_koi_pond.html) | The original pond: patterned koi on sine-wave spines, click ripples, scattered petals. |
+| [Little Vale](little-vale.html) | A tiny playable ASCII game set in a little vale. Shelved here 2026-10-28 from the ascii-cozy-game repo during the consolidation. |
 | [Botanical Koi Portfolio](interactive_ascii_botanical_koi_portfolio.html) | The landing page that kicked the whole series off: an ASCII botanical pond hero with a full vibe studio (palettes, glyph sets, koi count and speed, feeding). |
 | [Cozy Game of Life](cozy_game_of_life.html) | A warm little Life universe. Plant seeds by drawing, pick a palette (Twilight Forest, Moss, Warm Hearth, Midnight Tide), set the pace, and let gliders roam a wrap-around world. |
 | [Ocean in a Bottle](ocean-in-a-bottle.html) | Spring-physics seawater sloshing inside a character-drawn bottle. Tilt it with the pointer or the device, shake it, watch the droplets. |
@@ -58,6 +59,7 @@ The ones that started it, plus the playful ones.
 | File | What it is |
 | --- | --- |
 | [ascii_rendering_engine.js](ascii_rendering_engine.js) | The reusable ASCII engine the pond grew into: a procedural stamp-grid renderer plus an image sampler (luminance ramps, copyable text output), with demo recipes in its header comments. |
+| [AsciiEngine Demo](ascii-engine-demo.html) | The demo page for the shared rendering engine, shelved 2026-10-28 from the ascii-engine repo (whose engine file was already byte-identical to the copy here); recipe notes at [ascii-engine-recipes.md](ascii-engine-recipes.md). |
 
 ## On the bench
 
