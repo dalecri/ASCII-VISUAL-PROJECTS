@@ -49,7 +49,6 @@ The ones that started it, plus the playful ones.
 | [ASCII Koi Pond](ascii_koi_pond.html) | The original pond: patterned koi on sine-wave spines, click ripples, scattered petals. |
 | [Full Koi Pond](ascii-fish/) | The full six-koi pond as a split build (index + css + js): procedural Nishikigoi with their own patch patterns, a current-speed slider (0.2x-2.5x), and click ripples that scatter the fish. |
 | [Little Vale](little-vale.html) | A tiny playable ASCII game set in a little vale. Shelved here 2026-10-28 from the ascii-cozy-game repo during the consolidation. |
-| [Botanical Koi Portfolio](interactive_ascii_botanical_koi_portfolio.html) | The landing page that kicked the whole series off: an ASCII botanical pond hero with a full vibe studio (palettes, glyph sets, koi count and speed, feeding). |
 | [Cozy Game of Life](cozy_game_of_life.html) | A warm little Life universe. Plant seeds by drawing, pick a palette (Twilight Forest, Moss, Warm Hearth, Midnight Tide), set the pace, and let gliders roam a wrap-around world. |
 | [Ocean in a Bottle](ocean-in-a-bottle.html) | Spring-physics seawater sloshing inside a character-drawn bottle. Tilt it with the pointer or the device, shake it, watch the droplets. |
 | [ASCII Photo Booth](ascii_photo_booth.html) | Drop in a photo, get ASCII back: three character ramps, colour / palette / mono modes, copy-as-text and PNG export. Works on cats. |
