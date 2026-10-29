@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Koi Pond</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Background ASCII Canvas -->
+  <canvas id="pondCanvas"></canvas>
+
+  <!-- Sample Minimal Foreground -->
+  <main class="foreground-content">
+    <h1>Subsurface</h1>
+    <p>Gentle currents through dark waters. Six procedural Nishikigoi follow continuous undulating spine mechanics.</p>
+    <p>Constructed entirely of rendered monospace characters on a dynamic grid.</p>
+    <p class="hint">Click or tap anywhere on the pond to disturb the water surface.</p>
+
+    <!-- Speed Slider Control -->
+    <div class="controls-container">
+      <div class="slider-header">
+        <span>Current Speed</span>
+        <span id="speedVal" class="val">1.0x</span>
+      </div>
+      <div class="slider-wrapper">
+        <input id="speedSlider" type="range" min="0.2" max="2.5" step="0.1" value="1.0" aria-label="Swim speed">
+      </div>
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

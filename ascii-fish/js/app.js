@@ -1,0 +1,628 @@
+(function () {
+  'use strict';
+
+  // Global animation speed multiplier
+  let speedMultiplier = 1.0;
+
+  // Check prefers-reduced-motion
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const canvas = document.getElementById('pondCanvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  // Grid specifications
+  const FONT_NAME = '"Courier New", Courier, monospace';
+  const CELL_W = 12; // cell width in screen pixels
+  const CELL_H = 17; // cell height in screen pixels
+  const FONT_SIZE = 13;
+
+  let cols = 0;
+  let rows = 0;
+  let gridChars = [];
+  let gridColors = [];
+  let width = 0;
+  let height = 0;
+
+  // Water background sparse particles/glints
+  let waterBackground = [];
+
+  function initGrid() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+
+    cols = Math.ceil(width / CELL_W) + 1;
+    rows = Math.ceil(height / CELL_H) + 1;
+
+    const totalCells = cols * rows;
+    gridChars = new Array(totalCells);
+    gridColors = new Array(totalCells);
+
+    // Prepopulate sparse, atmospheric water texture
+    waterBackground = new Array(totalCells);
+    for (let i = 0; i < totalCells; i++) {
+      const rand = Math.random();
+      if (rand < 0.02) {
+        waterBackground[i] = {
+          char: '.',
+          color: 'rgba(28, 52, 75, 0.45)'
+        };
+      } else if (rand < 0.028) {
+        waterBackground[i] = {
+          char: '~',
+          color: 'rgba(20, 42, 64, 0.35)'
+        };
+      } else if (rand < 0.033) {
+        waterBackground[i] = {
+          char: '`',
+          color: 'rgba(16, 36, 56, 0.3)'
+        };
+      } else {
+        waterBackground[i] = null;
+      }
+    }
+  }
+
+  // --- Color Palette Definitions for Koi Varieties ---
+  // Kohaku (White & Red/Orange)
+  // Showa / Sanke (White, Scarlet, Ink Black)
+  // Ogon / Yamabuki (Golden Orange, Warm Cream)
+  // Karasugoi (Midnight Grey/Black with subtle silver accents)
+  const KOI_TYPES = [
+    {
+      name: 'Kohaku',
+      baseColor: [240, 238, 232], // Soft Ivory
+      patchColor: [225, 68, 22],  // Vermilion Orange-Red
+      accentColor: [255, 120, 40], // Bright Orange
+      hasBlack: false
+    },
+    {
+      name: 'Taisho Sanke',
+      baseColor: [242, 240, 238],
+      patchColor: [220, 50, 18],  // Deep Crimson
+      accentColor: [24, 26, 30],  // Sumi (Inky Black)
+      hasBlack: true
+    },
+    {
+      name: 'Showa Sanshoku',
+      baseColor: [32, 34, 40],    // Dark Sumi Base
+      patchColor: [228, 62, 20],  // Bold Vermilion
+      accentColor: [240, 235, 230], // White flashes
+      hasBlack: true
+    },
+    {
+      name: 'Yamabuki Ogon',
+      baseColor: [235, 175, 45],  // Golden Yellow
+      patchColor: [255, 210, 85], // Brilliant Gold
+      accentColor: [190, 110, 20], // Deep Bronze
+      hasBlack: false
+    },
+    {
+      name: 'Shiro Utsuri',
+      baseColor: [28, 30, 36],    // Black
+      patchColor: [245, 245, 242], // Pure White
+      accentColor: [80, 85, 95],  // Charcoal
+      hasBlack: true
+    },
+    {
+      name: 'Benigoi',
+      baseColor: [230, 60, 20],   // Solid Red-Orange
+      patchColor: [255, 95, 40],
+      accentColor: [255, 190, 150],
+      hasBlack: false
+    }
+  ];
+
+  // Procedural Koi Model
+  class KoiFish {
+    constructor(id) {
+      this.id = id;
+      this.type = KOI_TYPES[id % KOI_TYPES.length];
+
+      // Spine parameters
+      this.segmentCount = 20 + Math.floor(Math.random() * 8); // 20-27 segments
+      this.segSpacing = 7 + Math.random() * 3.5; // pixel distance between segments
+      this.bodyWidthScale = 1.0 + Math.random() * 0.45; // thickness variation
+      this.baseSwimSpeed = 1.1 + Math.random() * 0.9; // forward movement rate
+      this.swimSpeed = this.baseSwimSpeed;
+
+      // Head position and heading
+      this.x = Math.random() * (width || 800);
+      this.y = Math.random() * (height || 600);
+      this.heading = Math.random() * Math.PI * 2;
+      this.angularVelocity = 0;
+
+      // Undulation wave phase
+      this.wavePhase = Math.random() * Math.PI * 2;
+      this.baseWaveFrequency = 0.16 + Math.random() * 0.05;
+      this.waveFrequency = this.baseWaveFrequency;
+
+      // Chain of segments (x, y, angle)
+      this.segments = [];
+      for (let i = 0; i < this.segmentCount; i++) {
+        this.segments.push({
+          x: this.x - Math.cos(this.heading) * i * this.segSpacing,
+          y: this.y - Math.sin(this.heading) * i * this.segSpacing,
+          angle: this.heading
+        });
+      }
+
+      // Pre-generate procedural spot noise seeds along fish spine
+      this.patchSeeds = [];
+      for (let i = 0; i < this.segmentCount; i++) {
+        this.patchSeeds.push({
+          noise1: Math.sin(i * 0.72 + this.id * 3.1),
+          noise2: Math.cos(i * 1.15 + this.id * 5.7),
+          noise3: Math.sin(i * 2.3 + this.id * 1.8)
+        });
+      }
+    }
+
+    update() {
+      // 1. Steering & Smooth Wandering
+      // Gentle perlin-like wandering force scaled by speed multiplier
+      const wanderForce = (Math.sin(Date.now() * 0.0012 * speedMultiplier + this.id * 2.7) +
+                           Math.cos(Date.now() * 0.0006 * speedMultiplier + this.id * 1.3)) * 0.022 * Math.sqrt(speedMultiplier);
+
+      // Soft margin avoidance: smoothly turn away from viewport edges
+      const margin = 140;
+      let turnForce = 0;
+
+      if (this.x < margin) {
+        turnForce += Math.cos(this.heading) < 0 ? 0.045 : 0;
+        if (Math.sin(this.heading) > 0) turnForce -= 0.02; else turnForce += 0.02;
+      } else if (this.x > width - margin) {
+        turnForce += Math.cos(this.heading) > 0 ? 0.045 : 0;
+        if (Math.sin(this.heading) > 0) turnForce += 0.02; else turnForce -= 0.02;
+      }
+
+      if (this.y < margin) {
+        turnForce += Math.sin(this.heading) < 0 ? 0.045 : 0;
+        if (Math.cos(this.heading) > 0) turnForce += 0.02; else turnForce -= 0.02;
+      } else if (this.y > height - margin) {
+        turnForce += Math.sin(this.heading) > 0 ? 0.045 : 0;
+        if (Math.cos(this.heading) > 0) turnForce -= 0.02; else turnForce -= 0.02;
+      }
+
+      // Inertial angular velocity
+      this.angularVelocity = this.angularVelocity * 0.88 + (wanderForce + turnForce) * 0.12 * speedMultiplier;
+      this.heading += this.angularVelocity;
+
+      // Decay temporary burst speeds back to base speed
+      if (this.swimSpeed > this.baseSwimSpeed) {
+        this.swimSpeed += (this.baseSwimSpeed - this.swimSpeed) * 0.03;
+      }
+
+      // Advance head forward scaled by global speed multiplier
+      const currentSpeed = this.swimSpeed * speedMultiplier;
+      this.x += Math.cos(this.heading) * currentSpeed;
+      this.y += Math.sin(this.heading) * currentSpeed;
+
+      // Wrap safely if driven way off screen
+      const overflow = 200;
+      if (this.x < -overflow) this.x = width + overflow;
+      if (this.x > width + overflow) this.x = -overflow;
+      if (this.y < -overflow) this.y = height + overflow;
+      if (this.y > height + overflow) this.y = -overflow;
+
+      // 2. Wave Undulation
+      this.wavePhase += this.baseWaveFrequency * speedMultiplier;
+
+      // Update head segment
+      this.segments[0].x = this.x;
+      this.segments[0].y = this.y;
+      this.segments[0].angle = this.heading;
+
+      // 3. Follow-the-Leader Spine Kinematics with dynamic lateral body wave
+      for (let i = 1; i < this.segmentCount; i++) {
+        const prev = this.segments[i - 1];
+        const curr = this.segments[i];
+
+        // Natural wave amplitude increases towards the caudal peduncle & tail
+        const progress = i / this.segmentCount;
+        const waveAmp = Math.pow(progress, 1.35) * 4.2;
+        const lateralOffset = Math.sin(this.wavePhase - i * 0.45) * waveAmp;
+
+        // Follow previous segment maintaining fixed distance
+        const dx = curr.x - prev.x;
+        const dy = curr.y - prev.y;
+        let angle = Math.atan2(dy, dx);
+
+        // Maintain distance
+        curr.x = prev.x + Math.cos(angle) * this.segSpacing;
+        curr.y = prev.y + Math.sin(angle) * this.segSpacing;
+        curr.angle = angle;
+
+        // Apply lateral undulation normal to spine angle
+        const normal = angle + Math.PI / 2;
+        curr.renderX = curr.x + Math.cos(normal) * lateralOffset;
+        curr.renderY = curr.y + Math.sin(normal) * lateralOffset;
+      }
+
+      // Head render coordinates
+      this.segments[0].renderX = this.segments[0].x;
+      this.segments[0].renderY = this.segments[0].y;
+    }
+
+    // Compute thickness profile of a koi
+    getRadiusAt(index) {
+      const t = index / this.segmentCount;
+      // Characteristic koi profile: tapered snout, thickest at shoulder (t ~ 0.28), slim tail
+      let r = 0;
+      if (t < 0.28) {
+        r = 0.5 + (t / 0.28) * 0.5; // ramp up
+      } else {
+        r = 1.0 - Math.pow((t - 0.28) / 0.72, 1.25) * 0.88; // graceful taper down
+      }
+      return Math.max(0.2, r * 14 * this.bodyWidthScale);
+    }
+
+    // Get procedural color at a specific body point
+    getColorAt(segIndex, lateralRatio, isEye) {
+      if (isEye) {
+        return '#080808'; // dark pupil
+      }
+
+      const seed = this.patchSeeds[segIndex] || { noise1: 0, noise2: 0, noise3: 0 };
+      const t = segIndex / this.segmentCount;
+
+      // Procedural blotches via layered harmonics
+      const blotch = Math.sin(t * 12.0 + seed.noise1 * 3.5) * 0.5 +
+                     Math.cos(lateralRatio * 3.5 + seed.noise2 * 2.0) * 0.5;
+
+      const blackBlotch = Math.cos(t * 8.5 + seed.noise3 * 4.0) * 0.5 +
+                          Math.sin(lateralRatio * 5.0) * 0.5;
+
+      let rgb = this.type.baseColor;
+
+      if (this.type.hasBlack && blackBlotch > 0.42 && t > 0.12 && t < 0.85) {
+        rgb = [20, 22, 26]; // Sumi ink black patch
+      } else if (blotch > 0.08 && t > 0.08 && t < 0.9) {
+        rgb = this.type.patchColor;
+      } else if (blotch > -0.15 && t > 0.15 && t < 0.75) {
+        rgb = this.type.accentColor;
+      }
+
+      // Depth shading towards outer body edge
+      const edgeDim = 1.0 - Math.abs(lateralRatio) * 0.28;
+      const r = Math.min(255, Math.floor(rgb[0] * edgeDim));
+      const g = Math.min(255, Math.floor(rgb[1] * edgeDim));
+      const b = Math.min(255, Math.floor(rgb[2] * edgeDim));
+
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+
+  // --- Interactive Water Ripples ---
+  class Ripple {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 2;
+      this.maxRadius = 140 + Math.random() * 40;
+      this.life = 1.0;
+      this.decay = 0.016; // lasts ~2 seconds at 60fps
+      this.speed = 2.4;
+    }
+
+    update() {
+      this.radius += this.speed;
+      this.life -= this.decay;
+    }
+
+    isDead() {
+      return this.life <= 0 || this.radius >= this.maxRadius;
+    }
+  }
+
+  // Instantiate fish population
+  const FISH_COUNT = 6;
+  let fishes = [];
+  let ripples = [];
+
+  function createPondLife() {
+    fishes = [];
+    for (let i = 0; i < FISH_COUNT; i++) {
+      fishes.push(new KoiFish(i));
+    }
+  }
+
+  // --- Grid Painter Helpers ---
+  // Stamp character onto grid cell if within boundary
+  function stamp(gx, gy, char, color, priority) {
+    if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return;
+    const idx = gy * cols + gx;
+
+    // Simple layer check: only replace if empty or higher priority
+    if (!gridChars[idx] || (priority && gridChars[idx].p < priority)) {
+      gridChars[idx] = { c: char, p: priority || 1 };
+      gridColors[idx] = color;
+    }
+  }
+
+  // Rasterize a fish onto the monospace grid
+  function renderFishToGrid(fish) {
+    // 1. Rasterize Spine & Body Segments
+    for (let i = 0; i < fish.segmentCount; i++) {
+      const seg = fish.segments[i];
+      const rx = seg.renderX || seg.x;
+      const ry = seg.renderY || seg.y;
+
+      const radius = fish.getRadiusAt(i);
+      const spineAngle = seg.angle;
+      const normAngle = spineAngle + Math.PI / 2;
+
+      // Step along lateral ribs of the fish perpendicular to spine
+      const ribSteps = Math.ceil((radius * 2) / (CELL_W * 0.75));
+      for (let step = -ribSteps; step <= ribSteps; step++) {
+        const ratio = ribSteps === 0 ? 0 : step / ribSteps;
+        const dist = ratio * radius;
+
+        const px = rx + Math.cos(normAngle) * dist;
+        const py = ry + Math.sin(normAngle) * dist;
+
+        const gx = Math.floor(px / CELL_W);
+        const gy = Math.floor(py / CELL_H);
+
+        const absRatio = Math.abs(ratio);
+        if (absRatio > 1.0) continue;
+
+        // Character density based on core vs edge
+        let char = '#';
+        if (absRatio < 0.3) {
+          // Dense central core
+          char = (i % 2 === 0) ? '#' : '%';
+        } else if (absRatio < 0.65) {
+          // Mid-body scales
+          char = (i % 2 === 0) ? 'X' : 'S';
+        } else if (absRatio < 0.9) {
+          // Soft outer contour
+          char = 'o';
+        } else {
+          // Delicate rim
+          char = ':';
+        }
+
+        const color = fish.getColorAt(i, ratio, false);
+        // Higher priority for core segments
+        stamp(gx, gy, char, color, 3);
+      }
+
+      // Eyes: positioned near head around segment index 2
+      if (i === 2) {
+        const eyeOffset = radius * 0.78;
+        for (let side of [-1, 1]) {
+          const eyeX = rx + Math.cos(normAngle) * (side * eyeOffset);
+          const eyeY = ry + Math.sin(normAngle) * (side * eyeOffset);
+          const egx = Math.floor(eyeX / CELL_W);
+          const egy = Math.floor(eyeY / CELL_H);
+          stamp(egx, egy, 'o', '#101214', 5);
+        }
+      }
+
+      // Pectoral Fins (Left & Right) branching from segment 4-6
+      if (i === 4 || i === 5) {
+        const finLength = radius * 1.5;
+        for (let side of [-1, 1]) {
+          const finAngle = normAngle * side - spineAngle * 0.3;
+          for (let f = 1; f <= 3; f++) {
+            const fRatio = f / 3;
+            const fx = rx + Math.cos(finAngle) * (radius + fRatio * finLength);
+            const fy = ry + Math.sin(finAngle) * (radius + fRatio * finLength);
+            const fgx = Math.floor(fx / CELL_W);
+            const fgy = Math.floor(fy / CELL_H);
+            const finChar = f === 3 ? '~' : '/';
+            stamp(fgx, fgy, finChar, 'rgba(235, 235, 230, 0.65)', 2);
+          }
+        }
+      }
+    }
+
+    // 2. Caudal Tail Fin (Dynamic billowing flare)
+    const lastSeg = fish.segments[fish.segmentCount - 1];
+    const tailAngle = lastSeg.angle + Math.PI; // pointing backward
+    const tailNorm = lastSeg.angle + Math.PI / 2;
+    const tailSway = Math.sin(fish.wavePhase - fish.segmentCount * 0.45);
+
+    const tailRays = 5;
+    const tailLength = 22 * fish.bodyWidthScale;
+
+    for (let r = -2; r <= 2; r++) {
+      const raySpread = r * 0.38 + tailSway * 0.3;
+      const rayAng = tailAngle + raySpread;
+
+      for (let len = 5; len <= tailLength; len += 5) {
+        const tx = lastSeg.renderX + Math.cos(rayAng) * len;
+        const ty = lastSeg.renderY + Math.sin(rayAng) * len;
+        const tgx = Math.floor(tx / CELL_W);
+        const tgy = Math.floor(ty / CELL_H);
+
+        const tailRatio = len / tailLength;
+        let tailChar = '=';
+        if (tailRatio > 0.65) tailChar = '~';
+        if (tailRatio > 0.85) tailChar = '-';
+
+        const alpha = Math.max(0.2, 0.85 - tailRatio * 0.45);
+        const tailColor = `rgba(240, 235, 225, ${alpha})`;
+        stamp(tgx, tgy, tailChar, tailColor, 2);
+      }
+    }
+  }
+
+  // Rasterize circular ripples
+  function renderRipplesToGrid() {
+    for (let rip of ripples) {
+      const charSet = ['o', '/', '-', '~', '.'];
+      const char = charSet[Math.floor((1 - rip.life) * charSet.length)] || '.';
+      const alpha = Math.max(0.05, rip.life * 0.7);
+      const color = `rgba(130, 185, 225, ${alpha})`;
+
+      // Sample points along perimeter of expanding oval
+      const circumference = 2 * Math.PI * rip.radius;
+      const steps = Math.min(120, Math.max(16, Math.floor(circumference / 6)));
+
+      for (let s = 0; s < steps; s++) {
+        const angle = (s / steps) * Math.PI * 2;
+        // Slight vertical compression for perspective depth
+        const px = rip.x + Math.cos(angle) * rip.radius;
+        const py = rip.y + Math.sin(angle) * (rip.radius * 0.72);
+
+        const gx = Math.floor(px / CELL_W);
+        const gy = Math.floor(py / CELL_H);
+
+        stamp(gx, gy, char, color, 4);
+      }
+    }
+  }
+
+  // --- Main Render Cycle ---
+  function drawFrame() {
+    // Clear screen with deep pond color
+    ctx.fillStyle = '#030810';
+    ctx.fillRect(0, 0, width, height);
+
+    // Clear grid buffers
+    const total = cols * rows;
+    for (let i = 0; i < total; i++) {
+      gridChars[i] = null;
+      gridColors[i] = null;
+    }
+
+    // Apply sparse water baseline
+    for (let i = 0; i < total; i++) {
+      const bg = waterBackground[i];
+      if (bg) {
+        gridChars[i] = { c: bg.char, p: 0 };
+        gridColors[i] = bg.color;
+      }
+    }
+
+    // Draw fish into grid
+    for (let f = 0; f < fishes.length; f++) {
+      renderFishToGrid(fishes[f]);
+    }
+
+    // Draw ripples into grid
+    renderRipplesToGrid();
+
+    // Flush grid onto canvas using monospace fillText
+    ctx.font = `${FONT_SIZE}px ${FONT_NAME}`;
+    ctx.textBaseline = 'top';
+
+    // Batch rendering by text colors to reduce context switching
+    let currentDrawColor = null;
+    ctx.fillStyle = '#64748b';
+
+    for (let y = 0; y < rows; y++) {
+      const rowOffset = y * cols;
+      const screenY = y * CELL_H;
+
+      for (let x = 0; x < cols; x++) {
+        const cell = gridChars[rowOffset + x];
+        if (cell) {
+          const col = gridColors[rowOffset + x];
+          if (col !== currentDrawColor) {
+            ctx.fillStyle = col;
+            currentDrawColor = col;
+          }
+          ctx.fillText(cell.c, x * CELL_W, screenY);
+        }
+      }
+    }
+  }
+
+  // Animation Loop
+  function loop() {
+    // Update fish mechanics
+    for (let f = 0; f < fishes.length; f++) {
+      fishes[f].update();
+    }
+
+    // Update ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      ripples[i].update();
+      if (ripples[i].isDead()) {
+        ripples.splice(i, 1);
+      }
+    }
+
+    drawFrame();
+    requestAnimationFrame(loop);
+  }
+
+  // --- Interactive Events ---
+  function handleSpawnRipple(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY);
+
+    if (clientX !== undefined && clientY !== undefined) {
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      ripples.push(new Ripple(x, y));
+      if (ripples.length > 12) ripples.shift(); // cap active ripples
+
+      // Fish softly steer away from ripple epicenter
+      for (let fish of fishes) {
+        const dx = fish.x - x;
+        const dy = fish.y - y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 180 && dist > 1) {
+          const scurryAngle = Math.atan2(dy, dx);
+          fish.heading = fish.heading * 0.4 + scurryAngle * 0.6;
+          fish.swimSpeed = Math.min(3.2, fish.swimSpeed * 1.35);
+        }
+      }
+    }
+  }
+
+  window.addEventListener('click', handleSpawnRipple, { passive: true });
+  window.addEventListener('touchstart', handleSpawnRipple, { passive: true });
+
+  // Slider listener for speed control
+  const speedSlider = document.getElementById('speedSlider');
+  const speedVal = document.getElementById('speedVal');
+  if (speedSlider && speedVal) {
+    speedSlider.addEventListener('input', (e) => {
+      speedMultiplier = parseFloat(e.target.value);
+      speedVal.textContent = speedMultiplier.toFixed(1) + 'x';
+    });
+
+    // Prevent clicking slider from spawning ripples on the pond
+    speedSlider.addEventListener('click', (e) => e.stopPropagation());
+    speedSlider.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  }
+
+  // Clean viewport resize handler
+  let resizeDebounce;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeDebounce);
+    resizeDebounce = setTimeout(() => {
+      initGrid();
+      if (prefersReducedMotion) {
+        drawFrame();
+      }
+    }, 120);
+  });
+
+  // --- Initialize ---
+  initGrid();
+  createPondLife();
+
+  if (prefersReducedMotion) {
+    // Static snapshot without continuous rAF loop
+    drawFrame();
+  } else {
+    requestAnimationFrame(loop);
+  }
+
+})();
