@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Pond — LaBelle, QC</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #030810;
+      color: #a9c4d9;
+      overflow: hidden;
+      font-family: "Courier New", Courier, monospace;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #pondCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: pointer;
+    }
+
+    /* Corner Weather Readout */
+    .hud-readout {
+      position: fixed;
+      top: 16px;
+      left: 18px;
+      z-index: 10;
+      background: rgba(3, 8, 16, 0.78);
+      border: 1px solid rgba(115, 165, 205, 0.24);
+      border-radius: 6px;
+      padding: 8px 13px;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 14px;
+      line-height: 1.4;
+      letter-spacing: 0.02em;
+      color: #cfe4f5;
+      pointer-events: none;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+    }
+
+    .hud-sub {
+      font-size: 11px;
+      color: #6787a3;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="pondCanvas" aria-label="Animated ASCII Koi Pond reacting to weather in LaBelle, Quebec"></canvas>
+
+  <div class="hud-readout" id="hud">
+    <div id="weatherReadout">LaBelle: fetching weather...</div>
+    <div class="hud-sub" id="weatherSub">click or tap water to ripple</div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // --- Constants & Grid Configuration ---
+      const CELL_W = 12;
+      const CELL_H = 17;
+      const BG_HEX = "#030810";
+      const WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=46.2883&longitude=-74.7756&current=temperature_2m,weather_code,wind_speed_10m&timezone=America%2FToronto";
+      const FETCH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
+      const canvas = document.getElementById("pondCanvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const weatherReadoutEl = document.getElementById("weatherReadout");
+      const weatherSubEl = document.getElementById("weatherSub");
+
+      let cols = 80;
+      let rows = 40;
+      let dpr = 1;
+
+      // Reduced motion & visibility tracking
+      const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      let prefersReducedMotion = reducedMotionQuery.matches;
+      let isTabHidden = document.hidden;
+      let rafId = null;
+      let lastFrameTime = performance.now();
+
+      // --- Weather State ---
+      const weather = {
+        temp: null,
+        code: 0,
+        windSpeed: 0, // km/h from Open-Meteo
+        category: "clear", // "clear" | "cloudy" | "rain" | "snow" | "thunderstorm"
+        label: "clear sky",
+        available: false,
+        speedMultiplier: 1.0,
+        dimFactor: 1.0,
+        flashFrames: 0,
+        nextLightningTimer: 12.0
+      };
+
+      // --- Simulation Entities ---
+      const koiList = [];
+      const ripples = [];
+      const precipParticles = [];
+      let gridBuffer = [];
+
+      // --- Colour Manipulation Utilities ---
+      function adjustColor(rgb, dimFactor, flashFrames) {
+        let r = rgb[0] * dimFactor;
+        let g = rgb[1] * dimFactor;
+        let b = rgb[2] * dimFactor;
+        if (flashFrames > 0) {
+          const boost = flashFrames === 2 ? 150 : 90;
+          r = Math.min(255, r + boost);
+          g = Math.min(255, g + boost + 10);
+          b = Math.min(255, b + boost + 25);
+        }
+        return "rgb(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + ")";
+      }
+
+      // --- Weather Code Mapping ---
+      function interpretWeatherCode(code) {
+        if (code === 0) return { category: "clear", label: "clear sky" };
+        if (code === 1) return { category: "clear", label: "mainly clear" };
+        if (code === 2) return { category: "cloudy", label: "partly cloudy" };
+        if (code === 3) return { category: "cloudy", label: "overcast" };
+        if (code === 45 || code === 48) return { category: "cloudy", label: "foggy" };
+        if (code === 51) return { category: "rain", label: "light drizzle" };
+        if (code === 53) return { category: "rain", label: "drizzle" };
+        if (code === 55) return { category: "rain", label: "dense drizzle" };
+        if (code === 56 || code === 57) return { category: "rain", label: "freezing drizzle" };
+        if (code === 61) return { category: "rain", label: "light rain" };
+        if (code === 63) return { category: "rain", label: "moderate rain" };
+        if (code === 65) return { category: "rain", label: "heavy rain" };
+        if (code === 66 || code === 67) return { category: "rain", label: "freezing rain" };
+        if (code === 71) return { category: "snow", label: "light snow" };
+        if (code === 73) return { category: "snow", label: "moderate snow" };
+        if (code === 75) return { category: "snow", label: "heavy snow" };
+        if (code === 77) return { category: "snow", label: "snow grains" };
+        if (code === 80) return { category: "rain", label: "light rain showers" };
+        if (code === 81) return { category: "rain", label: "rain showers" };
+        if (code === 82) return { category: "rain", label: "heavy showers" };
+        if (code === 85) return { category: "snow", label: "light snow showers" };
+        if (code === 86) return { category: "snow", label: "heavy snow showers" };
+        if (code === 95) return { category: "thunderstorm", label: "thunderstorm" };
+        if (code === 96 || code === 99) return { category: "thunderstorm", label: "thunderstorm with hail" };
+        return { category: "clear", label: "calm" };
+      }
+
+      function applyWeatherBehaviour() {
+        switch (weather.category) {
+          case "clear":
+            weather.speedMultiplier = 1.0;
+            weather.dimFactor = 1.0;
+            break;
+          case "cloudy":
+            weather.speedMultiplier = 0.84;
+            weather.dimFactor = 0.85; // Dim all character colours about 15%
+            break;
+          case "rain":
+            weather.speedMultiplier = 1.12;
+            weather.dimFactor = 0.92;
+            break;
+          case "snow":
+            weather.speedMultiplier = 0.60; // Slow to about 60% speed
+            weather.dimFactor = 0.95;
+            break;
+          case "thunderstorm":
+            weather.speedMultiplier = 1.18;
+            weather.dimFactor = 0.86;
+            break;
+          default:
+            weather.speedMultiplier = 1.0;
+            weather.dimFactor = 1.0;
+        }
+        syncPrecipitationCount();
+      }
+
+      async function fetchWeather() {
+        try {
+          const response = await fetch(WEATHER_URL, { cache: "no-store" });
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          const data = await response.json();
+          if (!data || !data.current) throw new Error("Malformed payload");
+
+          const tempRounded = Math.round(Number(data.current.temperature_2m));
+          const code = Number(data.current.weather_code);
+          const wind = Number(data.current.wind_speed_10m) || 0;
+          const info = interpretWeatherCode(code);
+
+          weather.temp = tempRounded;
+          weather.code = code;
+          weather.windSpeed = wind;
+          weather.category = info.category;
+          weather.label = info.label;
+          weather.available = true;
+
+          applyWeatherBehaviour();
+          weatherReadoutEl.textContent = "LaBelle " + tempRounded + "°C, " + info.label;
+          weatherSubEl.textContent = "wind " + Math.round(wind) + " km/h • click water to ripple";
+        } catch (err) {
+          // Fallback to calm clear behaviour and show "weather unavailable"
+          weather.category = "clear";
+          weather.windSpeed = 0;
+          weather.available = false;
+          applyWeatherBehaviour();
+          weatherReadoutEl.textContent = "LaBelle — weather unavailable";
+          weatherSubEl.textContent = "calm clear fallback • click water to ripple";
+        }
+
+        if (prefersReducedMotion) {
+          renderStaticScene();
+        }
+      }
+
+      // --- Koi Fish Definition & Pattern Profiles ---
+      const KOI_PROFILES = [
+        {
+          name: "Kohaku", // Orange and white
+          length: 25,
+          baseSpeed: 6.4,
+          phaseSpeed: 5.8,
+          finRgb: [235, 225, 215],
+          getSegmentStyle(i) {
+            // Orange head/shoulders and mid-tail saddle, crisp white body
+            const isOrange = (i >= 1 && i <= 6) || (i >= 12 && i <= 17);
+            if (isOrange) {
+              return { ch: i < 10 ? "#" : "*", rgb: [242, 98, 38] };
+            }
+            return { ch: i < 8 ? "#" : (i < 18 ? "+" : ":"), rgb: [244, 240, 234] };
+          }
+        },
+        {
+          name: "Sanke", // White with red and black
+          length: 27,
+          baseSpeed: 5.9,
+          phaseSpeed: 5.4,
+          finRgb: [225, 230, 238],
+          getSegmentStyle(i) {
+            // Deep crimson hi markings + sumi black accents on snow white
+            if (i === 4 || i === 10 || i === 16 || i === 20) {
+              return { ch: "*", rgb: [75, 88, 106] }; // Sumi dark charcoal-black spot visible against #030810
+            }
+            if ((i >= 1 && i <= 5) || (i >= 12 && i <= 15)) {
+              return { ch: "#", rgb: [228, 56, 48] }; // Crimson red
+            }
+            return { ch: i < 16 ? "+" : ":", rgb: [240, 244, 248] }; // White
+          }
+        },
+        {
+          name: "Ogon", // Solid metallic gold
+          length: 23,
+          baseSpeed: 6.8,
+          phaseSpeed: 6.1,
+          finRgb: [245, 214, 110],
+          getSegmentStyle(i) {
+            if (i < 7) return { ch: "#", rgb: [252, 206, 62] };
+            if (i < 15) return { ch: "*", rgb: [238, 182, 44] };
+            return { ch: "+", rgb: [208, 152, 34] };
+          }
+        },
+        {
+          name: "Utsuri", // Pale grey and dark sumi banding
+          length: 21,
+          baseSpeed: 6.1,
+          phaseSpeed: 5.6,
+          finRgb: [165, 182, 198],
+          getSegmentStyle(i) {
+            const isDarkBand = (i >= 3 && i <= 5) || (i >= 9 && i <= 12) || (i >= 16 && i <= 17);
+            if (isDarkBand) {
+              return { ch: "*", rgb: [82, 98, 116] };
+            }
+            return { ch: i < 11 ? "#" : ":", rgb: [192, 206, 220] };
+          }
+        }
+      ];
+
+      // Segment radius envelope along a koi spine (in grid cell units)
+      function getBodyWidth(index, totalLength) {
+        const t = index / (totalLength - 1);
+        if (t < 0.10) return 0.75 + t * 8.5;          // Snout to head
+        if (t < 0.28) return 1.60 + (t - 0.10) * 1.8; // Widest shoulder
+        if (t < 0.76) return 1.92 - (t - 0.28) * 2.9; // Smooth taper down body
+        if (t < 0.88) return 0.52;                    // Caudal peduncle
+        return 0.65 + (t - 0.88) * 6.5;               // Fanning tail fin
+      }
+
+      function createKoi(profile, idx) {
+        const startX = cols * (0.22 + 0.18 * idx);
+        const startY = rows * (0.25 + 0.16 * idx);
+        const angle = (idx * Math.PI * 0.55) + 0.3;
+        const spacing = 0.66;
+        const spine = [];
+
+        for (let i = 0; i < profile.length; i++) {
+          spine.push({
+            x: startX - Math.cos(angle) * i * spacing,
+            y: startY - Math.sin(angle) * i * spacing
+          });
+        }
+
+        return {
+          profile: profile,
+          spine: spine,
+          spacing: spacing,
+          angle: angle,
+          turnVel: 0,
+          wanderSeed: Math.random() * 100,
+          phase: Math.random() * Math.PI * 2,
+          burstSpeed: 0
+        };
+      }
+
+      function initKoiPond() {
+        koiList.length = 0;
+        for (let i = 0; i < KOI_PROFILES.length; i++) {
+          koiList.push(createKoi(KOI_PROFILES[i], i));
+        }
+      }
+
+      // --- Ripple Management ---
+      function spawnRipple(x, y, maxRadius, speed) {
+        ripples.push({
+          x: x,
+          y: y,
+          radius: 0.4,
+          maxRadius: maxRadius || (10 + Math.random() * 7),
+          speed: speed || 7.2
+        });
+      }
+
+      function scareFishFromPoint(x, y, radius, burstStrength) {
+        for (let i = 0; i < koiList.length; i++) {
+          const koi = koiList[i];
+          const head = koi.spine[0];
+          const dx = head.x - x;
+          const dy = head.y - y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < radius) {
+            const escapeAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.35;
+            let diff = escapeAngle - koi.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            koi.angle += diff * 0.72;
+            koi.burstSpeed = Math.max(koi.burstSpeed, burstStrength);
+          }
+        }
+      }
+
+      function scatterAllFish() {
+        for (let i = 0; i < koiList.length; i++) {
+          const koi = koiList[i];
+          koi.angle += (Math.random() - 0.5) * 2.2;
+          koi.burstSpeed = 16.5 + Math.random() * 5.0;
+        }
+      }
+
+      // --- Precipitation Particles (Rain & Snow) ---
+      function syncPrecipitationCount() {
+        let target = 0;
+        if (weather.category === "rain") target = Math.min(120, Math.floor((cols * rows) * 0.025));
+        else if (weather.category === "thunderstorm") target = Math.min(160, Math.floor((cols * rows) * 0.035));
+        else if (weather.category === "snow") target = Math.min(95, Math.floor((cols * rows) * 0.02));
+
+        while (precipParticles.length < target) {
+          precipParticles.push({
+            x: Math.random() * cols,
+            y: Math.random() * rows,
+            swaySeed: Math.random() * Math.PI * 2,
+            speedFactor: 0.8 + Math.random() * 0.45,
+            variant: Math.random() < 0.5 ? 0 : 1
+          });
+        }
+        if (precipParticles.length > target) {
+          precipParticles.length = target;
+        }
+      }
+
+      // --- Simulation Update Step ---
+      function updateSimulation(dt, nowSec) {
+        // Wind sideways current (cells per second)
+        const windCurrentX = (weather.windSpeed * 0.045);
+
+        // 1. Update Koi Steering & Spine Kinematics
+        const marginX = Math.max(8, cols * 0.09);
+        const marginY = Math.max(6, rows * 0.11);
+
+        for (let i = 0; i < koiList.length; i++) {
+          const koi = koiList[i];
+          const head = koi.spine[0];
+
+          // Smooth organic wandering
+          koi.wanderSeed += dt * 0.85;
+          const wanderSteer = Math.sin(koi.wanderSeed * 1.7 + i) * 0.65 + Math.cos(koi.wanderSeed * 0.8 - i) * 0.45;
+          koi.turnVel += (wanderSteer - koi.turnVel) * dt * 2.5;
+
+          // Rain & thunderstorm make fish slightly skittish (spontaneous quick darts)
+          if ((weather.category === "rain" || weather.category === "thunderstorm") && Math.random() < dt * 0.28) {
+            koi.burstSpeed = Math.max(koi.burstSpeed, 8.5 + Math.random() * 4.5);
+            koi.turnVel += (Math.random() - 0.5) * 3.0;
+          }
+
+          // Edge avoidance steering
+          let avoidX = 0;
+          let avoidY = 0;
+          if (head.x < marginX) avoidX = (marginX - head.x) / marginX;
+          else if (head.x > cols - marginX) avoidX = -((head.x - (cols - marginX)) / marginX);
+
+          if (head.y < marginY) avoidY = (marginY - head.y) / marginY;
+          else if (head.y > rows - marginY) avoidY = -((head.y - (rows - marginY)) / marginY);
+
+          if (avoidX !== 0 || avoidY !== 0) {
+            const desiredAngle = Math.atan2(avoidY || Math.sin(koi.angle), avoidX || Math.cos(koi.angle));
+            let diff = desiredAngle - koi.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            const urgency = Math.min(1.5, Math.hypot(avoidX, avoidY));
+            koi.angle += diff * dt * (3.6 * urgency);
+          } else {
+            koi.angle += koi.turnVel * dt;
+          }
+
+          // Decay burst speed
+          if (koi.burstSpeed > 0) {
+            koi.burstSpeed = Math.max(0, koi.burstSpeed - dt * 15.0);
+          }
+
+          const effectiveSpeed = (koi.profile.baseSpeed * weather.speedMultiplier) + koi.burstSpeed;
+          const speedRatio = effectiveSpeed / koi.profile.baseSpeed;
+
+          // Advance head position + subtle wind drift bias
+          head.x += (Math.cos(koi.angle) * effectiveSpeed + windCurrentX * 0.22) * dt;
+          head.y += (Math.sin(koi.angle) * effectiveSpeed) * dt;
+
+          // Keep strictly inside canvas with soft padding
+          head.x = Math.max(2, Math.min(cols - 3, head.x));
+          head.y = Math.max(2, Math.min(rows - 3, head.y));
+
+          // Advance travelling sine-wave undulation phase
+          koi.phase += dt * koi.profile.phaseSpeed * (0.75 + speedRatio * 0.35);
+
+          // Pull each spine segment toward the one ahead of it with fixed spacing
+          for (let s = 1; s < koi.spine.length; s++) {
+            const prev = koi.spine[s - 1];
+            const curr = koi.spine[s];
+            const dx = curr.x - prev.x;
+            const dy = curr.y - prev.y;
+            const dist = Math.hypot(dx, dy) || 0.0001;
+            curr.x = prev.x + (dx / dist) * koi.spacing;
+            curr.y = prev.y + (dy / dist) * koi.spacing;
+          }
+
+          // Occasional subtle wake ripple behind rapid swimming fish
+          if (koi.burstSpeed > 7 && Math.random() < dt * 4.5) {
+            const tail = koi.spine[koi.spine.length - 1];
+            spawnRipple(tail.x, tail.y, 4.5, 5.5);
+          }
+        }
+
+        // 2. Ambient Weather Ripples & Lightning
+        if (weather.category === "clear" || weather.category === "cloudy") {
+          if (Math.random() < dt * 0.35) {
+            spawnRipple(Math.random() * cols, Math.random() * rows, 6 + Math.random() * 5, 5.0);
+          }
+        } else if (weather.category === "rain" || weather.category === "thunderstorm") {
+          // Constant random small ripples in rain
+          const spawnRate = weather.category === "thunderstorm" ? 9.5 : 6.0;
+          if (Math.random() < dt * spawnRate) {
+            const rx = Math.random() * cols;
+            const ry = Math.random() * rows;
+            spawnRipple(rx, ry, 3.2 + Math.random() * 3.8, 6.8);
+          }
+        }
+
+        // Thunderstorm lightning flash every 8 to 20 seconds
+        if (weather.category === "thunderstorm") {
+          weather.nextLightningTimer -= dt;
+          if (weather.nextLightningTimer <= 0) {
+            weather.flashFrames = 2; // Brighten whole scene for 2 frames
+            weather.nextLightningTimer = 8.0 + Math.random() * 12.0;
+            scatterAllFish();
+            spawnRipple(cols * 0.5, rows * 0.5, 16, 11);
+          }
+        } else {
+          weather.flashFrames = 0;
+        }
+
+        // 3. Update Expanding Ripples (pushed sideways by wind)
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          const r = ripples[i];
+          r.radius += r.speed * dt;
+          r.x += windCurrentX * 0.55 * dt;
+          if (r.radius >= r.maxRadius) {
+            ripples.splice(i, 1);
+          }
+        }
+
+        // 4. Update Rain / Snow Falling Particles
+        const isSnow = weather.category === "snow";
+        for (let i = 0; i < precipParticles.length; i++) {
+          const p = precipParticles[i];
+          if (isSnow) {
+            // Snow drifts down slowly with a sideways sway + wind
+            const sway = Math.sin(nowSec * 1.8 + p.swaySeed) * 1.4;
+            p.y += 4.2 * p.speedFactor * dt;
+            p.x += (sway + windCurrentX * 0.85) * dt;
+          } else {
+            // Rain falls briskly through the grid
+            p.y += 26.0 * p.speedFactor * dt;
+            p.x += windCurrentX * 1.15 * dt;
+          }
+
+          if (p.y >= rows) {
+            if (!isSnow && Math.random() < 0.25) {
+              spawnRipple(p.x, rows - 1 - Math.random() * (rows * 0.25), 2.8, 6.2);
+            }
+            p.y = -1;
+            p.x = Math.random() * cols;
+          }
+          if (p.x >= cols) p.x -= cols;
+          if (p.x < 0) p.x += cols;
+        }
+      }
+
+      // --- Scene Grid Composition & Rendering ---
+      function ensureGridBuffer() {
+        const total = cols * rows;
+        if (gridBuffer.length !== total) {
+          gridBuffer = new Array(total);
+          for (let i = 0; i < total; i++) {
+            gridBuffer[i] = { ch: "", rgb: null, priority: 0 };
+          }
+        } else {
+          for (let i = 0; i < total; i++) {
+            gridBuffer[i].ch = "";
+            gridBuffer[i].priority = 0;
+          }
+        }
+      }
+
+      function setCell(gx, gy, ch, rgb, priority) {
+        if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return;
+        const cell = gridBuffer[gy * cols + gx];
+        if (priority >= cell.priority) {
+          cell.ch = ch;
+          cell.rgb = rgb;
+          cell.priority = priority;
+        }
+      }
+
+      function composeAndDraw(nowSec) {
+        ensureGridBuffer();
+
+        // 1. Subtle Ambient Water Shimmer (Priority 1)
+        for (let y = 0; y < rows; y += 2) {
+          for (let x = 0; x < cols; x += 3) {
+            const wave = Math.sin(x * 0.19 + y * 0.27 - nowSec * 0.9) + Math.cos(x * 0.11 - y * 0.21 + nowSec * 0.6);
+            if (wave > 1.68) {
+              setCell(x, y, "·", [16, 42, 68], 1);
+            } else if (wave < -1.75) {
+              setCell(x, y, "~", [14, 36, 58], 1);
+            }
+          }
+        }
+
+        // 2. Expanding Ripple Rings (. o O style rings, Priority 2)
+        for (let i = 0; i < ripples.length; i++) {
+          const r = ripples[i];
+          const progress = r.radius / r.maxRadius;
+          const fade = Math.max(0.2, 1 - progress);
+
+          // Choose ring character based on ripple expansion stage
+          let ringChar = "O";
+          if (progress < 0.33) ringChar = ".";
+          else if (progress < 0.68) ringChar = "o";
+          else if (progress > 0.86) ringChar = ".";
+
+          const ringRgb = [
+            Math.round(55 + 115 * fade),
+            Math.round(115 + 110 * fade),
+            Math.round(160 + 85 * fade)
+          ];
+
+          const circumferenceSteps = Math.max(16, Math.ceil(r.radius * 7.5));
+          for (let s = 0; s < circumferenceSteps; s++) {
+            const theta = (s / circumferenceSteps) * Math.PI * 2;
+            // Correct aspect ratio so ripple rings look circular on 12x17 grid cells
+            const gx = Math.round(r.x + Math.cos(theta) * r.radius * (CELL_H / CELL_W) * 0.82);
+            const gy = Math.round(r.y + Math.sin(theta) * r.radius * 0.82);
+            setCell(gx, gy, ringChar, ringRgb, 2);
+          }
+        }
+
+        // 3. Draw 4 Koi Fish with Undulating Spine & Pectoral Fins (Priority 3 & 4)
+        for (let k = 0; k < koiList.length; k++) {
+          const koi = koiList[k];
+          const spine = koi.spine;
+          const len = spine.length;
+
+          // Compute rendered spine points with travelling sine wave undulation
+          const renderedSpine = new Array(len);
+          for (let s = 0; s < len; s++) {
+            let tx, ty;
+            if (s === 0) {
+              tx = Math.cos(koi.angle);
+              ty = Math.sin(koi.angle);
+            } else {
+              const dx = spine[s - 1].x - spine[s].x;
+              const dy = spine[s - 1].y - spine[s].y;
+              const d = Math.hypot(dx, dy) || 1;
+              tx = dx / d;
+              ty = dy / d;
+            }
+            // Normal vector perpendicular to spine
+            const nx = -ty;
+            const ny = tx;
+
+            // Sine wave amplitude grows down the spine toward the tail
+            const t = s / (len - 1);
+            const amp = (0.12 + Math.pow(t, 1.35) * 1.25);
+            const waveOffset = Math.sin(koi.phase - s * 0.42) * amp;
+
+            renderedSpine[s] = {
+              x: spine[s].x + nx * waveOffset,
+              y: spine[s].y + ny * waveOffset,
+              nx: nx,
+              ny: ny,
+              tx: tx,
+              ty: ty
+            };
+          }
+
+          // Draw pectoral fins around segment 4 and pelvic fins around segment 11
+          const finIndices = [4, 11];
+          for (let f = 0; f < finIndices.length; f++) {
+            const idx = finIndices[f];
+            if (idx < len) {
+              const pt = renderedSpine[idx];
+              const reach = f === 0 ? 2.15 : 1.55;
+              const flutter = Math.sin(koi.phase * 1.2 - idx) * 0.25;
+              const leftFinX = Math.round(pt.x + pt.nx * (reach + flutter) - pt.tx * 0.4);
+              const leftFinY = Math.round(pt.y + pt.ny * (reach + flutter) - pt.ty * 0.4);
+              const rightFinX = Math.round(pt.x - pt.nx * (reach - flutter) - pt.tx * 0.4);
+              const rightFinY = Math.round(pt.y - pt.ny * (reach - flutter) - pt.ty * 0.4);
+
+              setCell(leftFinX, leftFinY, ":", koi.profile.finRgb, 3);
+              setCell(rightFinX, rightFinY, ":", koi.profile.finRgb, 3);
+            }
+          }
+
+          // Rasterize each spine segment from tail to head so head overlaps cleanly
+          for (let s = len - 1; s >= 0; s--) {
+            const pt = renderedSpine[s];
+            const radius = getBodyWidth(s, len);
+            const segStyle = koi.profile.getSegmentStyle(s);
+            const rCeil = Math.ceil(radius + 0.5);
+
+            for (let dy = -rCeil; dy <= rCeil; dy++) {
+              for (let dx = -rCeil; dx <= rCeil; dx++) {
+                // Aspect-adjusted distance check
+                const dist = Math.hypot(dx * 0.82, dy);
+                if (dist <= radius) {
+                  const gx = Math.round(pt.x + dx);
+                  const gy = Math.round(pt.y + dy);
+                  const isEdge = dist > radius * 0.68 && radius > 1.1;
+                  const ch = isEdge ? ":" : segStyle.ch;
+                  setCell(gx, gy, ch, segStyle.rgb, 4);
+                }
+              }
+            }
+          }
+        }
+
+        // 4. Precipitation Layer: Rain (' and |) or Snow (* and .) (Priority 5)
+        if (weather.category === "rain" || weather.category === "thunderstorm") {
+          const rainRgb = [130, 185, 230];
+          for (let i = 0; i < precipParticles.length; i++) {
+            const p = precipParticles[i];
+            const ch = p.variant === 0 ? "|" : "'";
+            setCell(Math.floor(p.x), Math.floor(p.y), ch, rainRgb, 5);
+          }
+        } else if (weather.category === "snow") {
+          const snowRgb = [225, 238, 250];
+          for (let i = 0; i < precipParticles.length; i++) {
+            const p = precipParticles[i];
+            const ch = p.variant === 0 ? "*" : ".";
+            setCell(Math.floor(p.x), Math.floor(p.y), ch, snowRgb, 5);
+          }
+        }
+
+        // --- Draw Character Grid onto Full-Screen Canvas ---
+        if (weather.flashFrames > 0) {
+          ctx.fillStyle = weather.flashFrames === 2 ? "#1c2d42" : "#0d1828";
+        } else {
+          ctx.fillStyle = BG_HEX;
+        }
+        ctx.fillRect(0, 0, cols * CELL_W, rows * CELL_H);
+
+        ctx.font = 'bold 15px "Courier New", Courier, monospace';
+        ctx.textBaseline = "alphabetic";
+
+        let lastStyle = "";
+        for (let y = 0; y < rows; y++) {
+          const rowOffset = y * cols;
+          // Baseline position inside the 17px cell height
+          const baselineY = y * CELL_H + 13;
+
+          for (let x = 0; x < cols; x++) {
+            const cell = gridBuffer[rowOffset + x];
+            if (!cell.ch) continue;
+
+            const style = adjustColor(cell.rgb, weather.dimFactor, weather.flashFrames);
+            if (style !== lastStyle) {
+              ctx.fillStyle = style;
+              lastStyle = style;
+            }
+            ctx.fillText(cell.ch, x * CELL_W + 2, baselineY);
+          }
+        }
+
+        if (weather.flashFrames > 0) {
+          weather.flashFrames--;
+        }
+      }
+
+      // --- Animation Loop & Lifecycle Controls ---
+      function renderStaticScene() {
+        updateSimulation(0.016, performance.now() * 0.001);
+        composeAndDraw(performance.now() * 0.001);
+      }
+
+      function animate(now) {
+        if (isTabHidden || prefersReducedMotion) {
+          rafId = null;
+          return;
+        }
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastFrameTime) * 0.001));
+        lastFrameTime = now;
+
+        updateSimulation(dt, now * 0.001);
+        composeAndDraw(now * 0.001);
+
+        rafId = requestAnimationFrame(animate);
+      }
+
+      function startLoopIfAllowed() {
+        if (prefersReducedMotion) {
+          if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          renderStaticScene();
+          return;
+        }
+        if (!isTabHidden && !rafId) {
+          lastFrameTime = performance.now();
+          rafId = requestAnimationFrame(animate);
+        }
+      }
+
+      // --- Resize & Input Handlers ---
+      function resizeCanvas() {
+        dpr = window.devicePixelRatio || 1;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        cols = Math.max(24, Math.ceil(vw / CELL_W));
+        rows = Math.max(16, Math.ceil(vh / CELL_H));
+
+        canvas.width = Math.floor(vw * dpr);
+        canvas.height = Math.floor(vh * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        if (koiList.length === 0) {
+          initKoiPond();
+        } else {
+          // Keep existing koi inside new bounds
+          for (let i = 0; i < koiList.length; i++) {
+            const head = koiList[i].spine[0];
+            head.x = Math.min(cols - 4, Math.max(4, head.x));
+            head.y = Math.min(rows - 4, Math.max(4, head.y));
+          }
+        }
+
+        syncPrecipitationCount();
+
+        if (prefersReducedMotion) {
+          renderStaticScene();
+        }
+      }
+
+      function handlePointerDown(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY;
+        const gx = (clientX - rect.left) / CELL_W;
+        const gy = (clientY - rect.top) / CELL_H;
+
+        // Spawn primary and secondary concentric ripple rings
+        spawnRipple(gx, gy, 13.5, 8.2);
+        spawnRipple(gx, gy, 7.5, 5.2);
+
+        // Nearby fish dart away with a short speed burst
+        scareFishFromPoint(gx, gy, 20, 15.5);
+
+        if (prefersReducedMotion) {
+          renderStaticScene();
+        }
+      }
+
+      // --- Event Wiring ---
+      window.addEventListener("resize", resizeCanvas);
+      canvas.addEventListener("pointerdown", handlePointerDown);
+
+      document.addEventListener("visibilitychange", function () {
+        isTabHidden = document.hidden;
+        if (isTabHidden && rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        } else if (!isTabHidden) {
+          startLoopIfAllowed();
+        }
+      });
+
+      if (reducedMotionQuery.addEventListener) {
+        reducedMotionQuery.addEventListener("change", function (e) {
+          prefersReducedMotion = e.matches;
+          startLoopIfAllowed();
+        });
+      }
+
+      // --- Startup ---
+      resizeCanvas();
+      // Seed two gentle ripples on startup
+      spawnRipple(cols * 0.35, rows * 0.45, 10, 6.0);
+      spawnRipple(cols * 0.68, rows * 0.58, 8, 5.5);
+
+      startLoopIfAllowed();
+      fetchWeather();
+      setInterval(fetchWeather, FETCH_INTERVAL_MS);
+    })();
+  </script>
+</body>
+</html>
