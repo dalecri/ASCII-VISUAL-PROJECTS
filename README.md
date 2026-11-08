@@ -31,7 +31,6 @@ Pieces that run on real time: clocks, weather, seasons.
 | [Seasonal Tree](seasonal-tree.html) | One seeded tree living by the real calendar: spring growth, summer canopy, mottled autumn fall, snowy bare branches. Scrub the year or play it in a minute. |
 | [Rain on Glass](rain-on-glass.html) | A fogged window in the rain. Drops gather, run down wiggly trails, and wipe the view clear before it mists over again. Three scenes behind the glass. |
 | [Life Clock](life_clock.html) | The current time stamped into a running Game of Life, fraying and regrowing every minute, with age-coloured cells and fade trails. A screensaver clock. |
-| [Weather Pond](weather_pond.html) | A koi pond that reads LaBelle, Quebec's real weather (Open-Meteo, no key): rain, snow, thunderstorms, and wind all change the pond's behaviour. |
 
 ## Ponds, portraits & toys
 
@@ -57,7 +56,15 @@ The ones that started it, plus the playful ones.
 
 Prompted and spec'd, not yet built: Falling-Sand Zen Box, Strange Attractor Portrait, Tide Clock, Fireflies over the Marsh, Glyph Painter.
 
+## Archive
+
+Retired from the collection, kept for reference.
+
+| Piece | What it is |
+| --- | --- |
+| [Weather Pond](archive/weather_pond.html) | The live-weather pond (archived Nov 8, 2026): four named koi (Kohaku, Sanke, Ogon, Utsuri) mirroring LaBelle's real weather via Open-Meteo. Felt too close to the other ponds to keep in the collection. |
+
 ## Notes
 
-- No trackers, no accounts, no network calls except Weather Pond's keyless Open-Meteo fetch.
+- No trackers, no accounts, no network calls.
 - Styling follows the Quiet Pixel guide: dark soft-purple grounds, rounded panels, Space Mono, one accent per screen.
