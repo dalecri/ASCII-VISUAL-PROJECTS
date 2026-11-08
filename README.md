@@ -8,15 +8,6 @@ Every piece is a **single HTML file in vanilla JavaScript, with no libraries and
 
 ---
 
-## Emergent systems
-
-Patterns nobody drew; they grow out of simple rules.
-
-| Piece | What it is |
-| --- | --- |
-| [Reaction-Diffusion Garden](reaction-diffusion-garden.html) | Gray-Scott chemistry blooming into coral, spots, and mazes. Click to seed it and watch it grow. Five presets (Coral, Mitosis, Leopard Spots, Maze, Slow Waves). |
-| [Murmuration](murmuration.html) | Two hundred starlings as glyphs over a dusk sky, flocking by the three boids rules. Click for a hawk scare; pick Ribbon, Swirl, or Scatter moods. |
-
 ## Math made visible
 
 Equations you can look at.
@@ -27,6 +18,8 @@ Equations you can look at.
 | [ASCII Map Generator](ascii-map-generator.html) | Procedural ASCII terrain maps, generated from a seed. Shelved here 2026-10-28 from its own repo during the consolidation. |
 | [Wave Interference Table](wave-interference-table.html) | Draggable ripple sources on dark water. Crests, troughs, and the quiet nodal threads where waves cancel each other. Optional phosphor afterglow. |
 | [Kaleidoscope Loom](kaleidoscope-loom.html) | Noise folded through mirror symmetry into living mandalas. 4 to 16 segments, three palettes, and a symmetry centre that follows your hand. |
+| [Reaction-Diffusion Garden](reaction-diffusion-garden.html) | Gray-Scott chemistry blooming into coral, spots, and mazes. Click to seed it and watch it grow. Five presets (Coral, Mitosis, Leopard Spots, Maze, Slow Waves). |
+| [Murmuration](murmuration.html) | Two hundred starlings as glyphs over a dusk sky, flocking by the three boids rules. Click for a hawk scare; pick Ribbon, Swirl, or Scatter moods. |
 
 ## Ambient & slow art
 
